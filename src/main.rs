@@ -1,6 +1,7 @@
 mod codegen;
 mod register;
 mod system;
+mod code;
 
 use crate::codegen::test_codegen;
 use crate::system::*;
@@ -11,6 +12,6 @@ fn main() {
     //println!("{:#?}", sys);
     let mut prog = Program::new(&sys);   
     sys.lower(&mut prog);
-    println!("{:#?}", prog.prog);    
+    println!("{:#?}", prog);    
 }
 

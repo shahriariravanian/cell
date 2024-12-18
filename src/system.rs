@@ -9,226 +9,37 @@ use std::io::BufReader;
 use std::path::Path;
 use std::collections::{HashMap, HashSet};
 
-use crate::register::Reg;
+use crate::register::*;
+use crate::code::*;
 
-type Tac = fn (f64, f64) -> f64;
-
-pub enum Instruction {
-    Op{
-        op: String, 
-        x: Reg,
-        y: Reg,
-        dst: Reg,
-        f: Tac
-    },
-    Num {
-        val: f64,
-        dst: Reg
-    },
-    Var {
-        name: String,
-        reg: Reg
-    }
-}
-
-impl std::fmt::Display for Instruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Instruction::Op { op, x, y, dst, .. } => write!(f, "r{:<6}← r{} {} r{}", dst.0, x.0, op, y.0),
-            Instruction::Num { val, dst } => write!(f, "r{:<6}= {}", dst.0, val),
-            Instruction::Var { name, reg } => write!(f, "r{:<6}:: {}", reg.0, name),
-        }
-    }
-}
-
-impl std::fmt::Debug for Instruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::fmt::Display::fmt(self, f)
-    }
-}
-
-pub struct Code {}
-
-impl Code {
-    pub fn mov(x: f64, _y: f64) -> f64 {
-        x
-    }
-
-    pub fn plus(x: f64, y: f64) -> f64 {
-        x + y
-    }
-    
-    pub fn minus(x: f64, y: f64) -> f64 {
-        x - y
-    }
-    
-    pub fn neg(x: f64, y: f64) -> f64 {
-        -x
-    }
-    
-    pub fn times(x: f64, y: f64) -> f64 {
-        x * y
-    }
-    
-    pub fn divide(x: f64, y: f64) -> f64 {
-        x / y
-    }
-    
-    pub fn rem(x: f64, y: f64) -> f64 {
-        x % y
-    }
-    
-    pub fn power(x: f64, y: f64) -> f64 {
-        x.powf(y)
-    }    
-    
-    pub fn gt(x: f64, y: f64) -> f64 {
-        if x > y { 1.0 } else { -1.0 }
-    }
-    
-    pub fn geq(x: f64, y: f64) -> f64 {
-        if x >= y { 1.0 } else { -1.0 }
-    }
-    
-    pub fn lt(x: f64, y: f64) -> f64 {
-        if x < y { 1.0 } else { -1.0 }
-    }
-    
-    pub fn leq(x: f64, y: f64) -> f64 {
-        if x <= y { 1.0 } else { -1.0 }
-    }
-    
-    pub fn eq(x: f64, y: f64) -> f64 {
-        if x == y { 1.0 } else { -1.0 }
-    }
-    
-    pub fn neq(x: f64, y: f64) -> f64 {
-        if x != y { 1.0 } else { -1.0 }
-    }
-    
-    pub fn and(x: f64, y: f64) -> f64 {
-        if x > 0.0 && y > 0.0 { 1.0 } else { -1.0 }
-    }
-    
-    pub fn or(x: f64, y: f64) -> f64 {
-        if x > 0.0 || y > 0.0 { 1.0 } else { -1.0 }
-    }
-    
-    pub fn xor(x: f64, y: f64) -> f64 {
-        if x * y < 0.0 { 1.0 } else { -1.0 }
-    }
-    
-    pub fn if_pos(x: f64, y: f64) -> f64 {
-        if x > 0.0 { y } else { 0.0 }
-    }
-    
-    pub fn if_neg(x: f64, y: f64) -> f64 {
-        if x < 0.0 { y } else { 0.0 }
-    }    
-    
-    pub fn sin(x: f64, _y: f64) -> f64 {
-        x.sin()
-    }
-    
-    pub fn cos(x: f64, _y: f64) -> f64 {
-        x.cos()
-    }
-    
-    pub fn tan(x: f64, _y: f64) -> f64 {
-        x.tan()
-    }
-    
-    pub fn csc(x: f64, _y: f64) -> f64 {
-        1.0 / x.sin()
-    }
-    
-    pub fn sec(x: f64, _y: f64) -> f64 {
-        1.0 / x.cos()
-    }
-    
-    pub fn cot(x: f64, _y: f64) -> f64 {
-        1.0 / x.tan()
-    }    
-    
-    pub fn asin(x: f64, _y: f64) -> f64 {
-        x.asin()
-    }
-    
-    pub fn acos(x: f64, _y: f64) -> f64 {
-        x.acos()
-    }
-    
-    pub fn atan(x: f64, _y: f64) -> f64 {
-        x.atan()
-    }    
-    
-    pub fn exp(x: f64, _y: f64) -> f64 {
-        x.exp()
-    }
-    
-    pub fn ln(x: f64, _y: f64) -> f64 {
-        x.ln()
-    }
-    
-    pub fn log(x: f64, _y: f64) -> f64 {
-        x.log(10.0)
-    }
-    
-    pub fn root(x: f64, _y: f64) -> f64 {
-        x.sqrt()
-    }
-}
 
 #[derive(Debug)]
 pub struct Program {
     pub prog:   Vec<Instruction>,
-    pub free:   Vec<Reg>,
-    pub fac:    Reg,
-    pub vars:   HashMap<String, Reg>,  
-    pub diffs:  HashMap<String, Reg>,  
-    pub regs:   HashSet<Reg>
+    pub frame:  Frame
 }
 
 impl Program {
     pub fn new(sys: &System) -> Program {
-        let mut vars: HashMap<String, (Option<Reg>, Option<Reg>)> = HashMap::new();
+        let mut frame = Frame::new();
+
+        frame.alloc(RegType::State(sys.iv.name.clone()), None);
         
-        let ns = sys.states.len();
-        // let np = sys.params.len();
-        
-        let mut vars: HashMap<String, Reg> = HashMap::new();
-        let mut diffs: HashMap<String, Reg> = HashMap::new();
-        
-        vars.insert(sys.iv.name.clone(), Reg(1));
-        
-        for (i, v) in sys.params.iter().enumerate() {
-            vars.insert(v.name.clone(), Reg(2+2*ns+i));
+        for v in &sys.states {
+            frame.alloc(RegType::State(v.name.clone()), Some(v.val));
         }
         
-        for (i, v) in sys.states.iter().enumerate() {
-            vars.insert(v.name.clone(), Reg(2+i));
-            diffs.insert(v.name.clone(), Reg(2+ns+i));
+        for v in &sys.states {
+            frame.alloc(RegType::Diff(v.name.clone()), None);
         }
         
-        let mut regs: HashSet<Reg> = HashSet::new();
-        regs.insert(Reg(0));
-        regs.insert(Reg(1));
-        let _: Vec<bool> = vars.values().map(|x| regs.insert(*x)).collect();
-        let _: Vec<bool> = diffs.values().map(|x| regs.insert(*x)).collect();        
-        
-        /*
-        for (i, v) in sys.obs.iter().enumerate() {
-            vars.insert(v.lhs.var().unwrap(), Reg(2+2*ns+np+i));
-        }
-        */        
+        for v in &sys.params {
+            frame.alloc(RegType::Param(v.name.clone()), Some(v.val));
+        }                
     
         Program {
             prog:   Vec::new(),
-            free:   Vec::new(),
-            fac:    sys.reg_base(),
-            vars,
-            diffs,
-            regs
+            frame
         }
     }
     
@@ -236,29 +47,36 @@ impl Program {
         self.prog.push(s)
     }
     
-    pub fn alloc_reg(&mut self) -> Reg {
-        match self.free.pop() {
-            Some(r) => r,
-            None => {
-                let r = self.fac;
-                self.fac.advance();
-                r
-            }
-        }
+    pub fn alloc_temp(&mut self) -> Reg {
+        self.frame.alloc(RegType::Temp, None)
     }
     
-    pub fn free_reg(&mut self, r: Reg) {
-        if !self.regs.contains(&r) {
-            self.free.push(r)
-        }
+    pub fn alloc_obs(&mut self, name: &str) -> Reg {
+        self.frame.alloc(RegType::Obs(name.to_string()), None)
+    }
+    
+    pub fn free(&mut self, r: Reg) {
+        self.frame.free(r)
     }
     
     pub fn reg(&self, name: &str) -> Reg {        
-        *self.vars.get(name).expect(format!("cannot find {}", name).as_ref())
+        if let Some(r) = self.frame.find(&RegType::State(name.to_string())) {
+            return r;
+        }
+        if let Some(r) = self.frame.find(&RegType::Param(name.to_string())) {
+            return r;
+        }
+        if let Some(r) = self.frame.find(&RegType::Obs(name.to_string())) {
+            return r;
+        }
+        panic!("cannot find reg by name");
     }
     
     pub fn reg_diff(&self, name: &str) -> Reg {
-        *self.diffs.get(name).expect(format!("cannot find diff_{}", name).as_ref())
+        if let Some(r) = self.frame.find(&RegType::Diff(name.to_string())) {
+            return r;
+        }
+        panic!("cannot find diff by name");
     }
 }
 
@@ -310,7 +128,7 @@ impl Expr {
     fn lower_unary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg { 
         let x = args[0].lower(prog);
         let y = Reg(0);
-        let dst = prog.alloc_reg();            
+        let dst = prog.alloc_temp();            
         let f = match op {
             "minus" => Code::neg,
             "sin"   => Code::sin,
@@ -330,14 +148,14 @@ impl Expr {
         };
         
         prog.push(Instruction::Op { op: op.to_string(), f, x, y, dst });                
-        prog.free_reg(x);
+        prog.free(x);
         dst
     }
     
     fn lower_binary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg { 
         let x = args[0].lower(prog);
         let y = args[1].lower(prog);
-        let dst = prog.alloc_reg();        
+        let dst = prog.alloc_temp();        
         let f = match op {
             "plus"      => Code::plus,
             "minus"     => Code::minus,
@@ -358,8 +176,8 @@ impl Expr {
         };
         
         prog.push(Instruction::Op { op: op.to_string(), f, x, y, dst });        
-        prog.free_reg(x);
-        prog.free_reg(y);
+        prog.free(x);
+        prog.free(y);
         dst
     }
     
@@ -371,18 +189,19 @@ impl Expr {
         let x = args[0].lower(prog);
         let y1 = args[1].lower(prog);
         let y2 = args[2].lower(prog);
-        let t1 = prog.alloc_reg();
-        let t2 = prog.alloc_reg();    
-        let dst = prog.alloc_reg();       
+        let t1 = prog.alloc_temp();
+        let t2 = prog.alloc_temp();    
+        let dst = prog.alloc_temp();     
+          
         prog.push(Instruction::Op { op: "if_pos".to_string(), f: Code::if_pos, x, y: y1, dst: t1 });
         prog.push(Instruction::Op { op: "if_neg".to_string(), f: Code::if_neg, x, y: y2, dst: t2 });
         prog.push(Instruction::Op { op: "plus".to_string(), f: Code::plus, x: t1, y: t2, dst });
         
-        prog.free_reg(x);
-        prog.free_reg(y1);
-        prog.free_reg(y2);
-        prog.free_reg(t1);
-        prog.free_reg(t2);
+        prog.free(x);
+        prog.free(y1);
+        prog.free(y2);
+        prog.free(t1);
+        prog.free(t2);
         
         dst
     }
@@ -397,9 +216,9 @@ impl Expr {
         let mut x = args[0].lower(prog);
         for i in 1..args.len() {
             let y = args[i].lower(prog);
-            let dst = prog.alloc_reg();
+            let dst = prog.alloc_temp();
             prog.push(Instruction::Op { op: op.to_string(), f, x, y, dst });
-            prog.free_reg(x);
+            prog.free(x);
             x = dst;
         };
         
@@ -411,7 +230,7 @@ impl Lower for Expr {
     fn lower(&self, prog: &mut Program) -> Reg {
         match self {
             Expr::Const { val } => {
-                let dst = prog.alloc_reg();
+                let dst = prog.alloc_temp();
                 prog.push(Instruction::Num { val: *val, dst });
                 dst
             },
@@ -445,13 +264,7 @@ impl Lower for Equation {
         let dst = if let Some(var) = self.lhs.diff_var() {
             prog.reg_diff(&var)
         } else if let Some(var) = self.lhs.var() {            
-            if prog.vars.contains_key(&var) {
-                panic!("duplicate assignment");
-            }
-            let r = prog.alloc_reg();
-            prog.vars.insert(var, r);
-            prog.regs.insert(r);
-            r
+            prog.alloc_obs(&var)            
         } else {
             panic!("undefined diff variable");
         };
