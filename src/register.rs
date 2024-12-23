@@ -1,13 +1,9 @@
 use std::collections::HashMap;
 
+// Unit-like structure abstracting a single register
+// it covers the index of the register in mem
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Reg(pub usize);
-
-impl Reg {
-    pub fn advance(&mut self) {
-        self.0 += 1        
-    }    
-}
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum RegType {
@@ -21,6 +17,7 @@ pub enum RegType {
 }
 
 
+// The register file
 #[derive(Debug)]
 pub struct Frame {
     pub regs: Vec<(RegType, Option<f64>)>,
@@ -59,7 +56,7 @@ impl Frame {
             RegType::Diff(_) | 
             RegType::Param(_) | 
             RegType::Obs(_) => {
-                self.lookup.insert(t.clone(), idx).map(|x| panic!("key already exists"));
+                self.lookup.insert(t.clone(), idx).map(|_x| panic!("key already exists"));
             }
         };
         
@@ -68,6 +65,7 @@ impl Frame {
     }
     
     pub fn free(&mut self, r: Reg) {        
+        // only Temp tegisters can be recycled
         if let RegType::Temp = self.regs[r.0].0 {
             self.freed.push(r);
         };

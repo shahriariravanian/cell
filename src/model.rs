@@ -1,25 +1,26 @@
-use libm;
-
-use serde_json::Value;
 use serde::Deserialize;
 
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use std::collections::HashMap;
 
 use std::rc::Rc;
 use std::cell::RefCell;
 
 use crate::register::*;
 use crate::code::*;
+use crate::vector::*;
+use crate::solvers::*;
+use crate::amd::*;
 
-
+// lowers Expr and its constituents into a three-address_code format
 pub trait Lower {
     fn lower(&self, prog: &mut Program) -> Reg;
 }
 
+
+// collects instructions and registers
 #[derive(Debug)]
 pub struct Program {
     pub code:   Rc<RefCell<Vec<Instruction>>>,
@@ -27,20 +28,20 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn new(sys: &System) -> Program {
+    pub fn new(ml: &CellModel) -> Program {
         let mut frame = Frame::new();
 
-        frame.alloc(RegType::Var(sys.iv.name.clone()), None);
+        frame.alloc(RegType::Var(ml.iv.name.clone()), None);
         
-        for v in &sys.states {
+        for v in &ml.states {
             frame.alloc(RegType::State(v.name.clone()), Some(v.val));
         }
         
-        for v in &sys.states {
+        for v in &ml.states {
             frame.alloc(RegType::Diff(v.name.clone()), None);
         }
         
-        for v in &sys.params {
+        for v in &ml.params {
             frame.alloc(RegType::Param(v.name.clone()), Some(v.val));
         }                
     
@@ -54,10 +55,17 @@ impl Program {
         self.code.borrow_mut().push(s)
     }
     
+    // allocates a constant register
+    pub fn alloc_const(&mut self, val: f64) -> Reg {
+        self.frame.alloc(RegType::Const, Some(val))
+    }
+    
+    // allocates a temporary register
     pub fn alloc_temp(&mut self) -> Reg {
         self.frame.alloc(RegType::Temp, None)
     }
     
+    // allocates an obeservable register
     pub fn alloc_obs(&mut self, name: &str) -> Reg {
         self.frame.alloc(RegType::Obs(name.to_string()), None)
     }
@@ -83,68 +91,76 @@ impl Program {
     }
 }
 
+
+// abstracts a function passed to an ODE solver
 #[derive(Debug)]
 pub struct Function {
-    pub code:           Rc<RefCell<Vec<Instruction>>>,    
+    pub inter:          Intermediate,
     pub mem:            Vec<f64>,    
     pub u0:             Vec<f64>,
     pub first_state:    usize,
     pub count_states:   usize,
     pub first_param:    usize,
-    pub count_params:   usize
+    pub count_params:   usize,    
+    pub compiled:       Compiled
 }
 
 impl Function {
     pub fn new(prog: &Program) -> Function {
-        let code = prog.code.clone();
+        let inter = Intermediate::new(prog.code.clone());
         let mem = prog.frame.mem();
-        
+                
         let first_state = prog.frame.first_state().unwrap();
         let count_states = prog.frame.count_states();
         let first_param = prog.frame.first_param().unwrap();
         let count_params = prog.frame.count_params();
         
-        let u0 = &mem[first_state..first_state+count_states].to_vec();
+        let u0 = &mem[first_state..first_state+count_states].to_vec();        
+        
+        let compiled = Amd64::new().compile(&inter);
 
         Function {
-            code,
+            inter,
             mem,
             u0: u0.clone(),
             first_state,
             count_states,
             first_param,
-            count_params
+            count_params,
+            compiled
         }
     }
     
-    pub fn initial_states(&self) -> Vec<f64> {
-        self.u0.clone()
+    pub fn initial_states(&self) -> Vector {
+        Vector(self.u0.clone())
     }
     
-    pub fn call(&mut self, du: &mut Vec<f64>, u: &Vec<f64>, t: f64) {
+    pub fn params(&self) -> Vector {
+        let p = self.mem[self.first_param..self.first_param+self.count_params].to_vec();
+        Vector(p)
+    }    
+    
+    pub fn run(&mut self) {        
+        //self.inter.run(&mut self.mem);     
+        self.compiled.run(&self.mem, &self.inter.vt);
+    }
+}
+
+impl Callable for Function {
+    fn call(&mut self, du: &mut Vector, u: &Vector, t: f64) {
         self.mem[2] = t;    // TODO: hardcoded iv address        
         
-        let mut p = &mut self.mem[self.first_state..self.first_state+self.count_states];
-        p.copy_from_slice(&u[..]);
+        let p = &mut self.mem[self.first_state..self.first_state+self.count_states];
+        p.copy_from_slice(u.as_slice());
         
         self.run();        
         
         let dp = &self.mem[self.first_state+self.count_states..self.first_state+2*self.count_states];
-        &mut du[..].copy_from_slice(dp);
-    }
-    
-    pub fn run(&mut self) {
-        for c in self.code.borrow().iter() {
-            match c {
-                Instruction::Op { f, x, y, dst, .. } => { self.mem[dst.0] = f(self.mem[x.0], self.mem[y.0]); },
-                Instruction::Num { val, dst } => { self.mem[dst.0] = *val; },
-                Instruction::Var { name, reg } => {},
-            }
-        }
+        du.as_mut_slice().copy_from_slice(dp);
     }
 }
 
-
+// A defined (state or param) variable
 #[derive(Debug, Clone, Deserialize)]
 pub struct Variable {
     pub name: String,
@@ -158,6 +174,7 @@ impl Lower for Variable {
 }
 
 
+// Expr tree
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum Expr {
@@ -167,6 +184,7 @@ pub enum Expr {
 }
 
 impl Expr {
+    // extracts the differentiated variable from the lhs of a diff eq
     pub fn diff_var(&self) -> Option<String> {
         if let Expr::Tree{ args, op } = self {
             if op != "Differential" {
@@ -178,7 +196,8 @@ impl Expr {
         };
         None
     }
-    
+
+    // extracts the regular variable from the lhs of an observable eq    
     pub fn var(&self) -> Option<String> {
         if let Expr::Var{ name } = self {
             return Some(name.clone())         
@@ -291,17 +310,23 @@ impl Lower for Expr {
     fn lower(&self, prog: &mut Program) -> Reg {
         match self {
             Expr::Const { val } => {
+                // Optimization!
+                // we assume that the value of Reg(0) is 0.0 and Reg(1) is -1
                 if *val == 0.0 {
                     Reg(0)
                 } else if *val == -1.0 {
                     Reg(1)
                 } else{
-                    let dst = prog.alloc_temp();
-                    prog.push(Instruction::Num { val: *val, dst });
+                    // let dst = prog.alloc_temp();
+                    // prog.push(Instruction::Num { val: *val, dst });
+                    let dst = prog.alloc_const(*val);                    
+                    prog.push(Instruction::Num { val: *val, dst }); // not needed for code generation, useful for debugging
                     dst
                 }
             },
             Expr::Var { name } => {
+                // Technically, this is not necessary but having Instruction::Var in the code
+                // is helpful for debugging
                 let dst = prog.reg(name);
                 prog.push(Instruction::Var { name: name.clone(), reg: dst });
                 dst                
@@ -318,6 +343,7 @@ impl Lower for Expr {
     }    
 }
 
+// abstracts equation lhs ~ rhs
 #[derive(Debug, Clone, Deserialize)]
 pub struct Equation {
     pub lhs: Expr,
@@ -341,8 +367,9 @@ impl Lower for Equation {
     }
 }
 
+// loads from a JSON CellModel file
 #[derive(Debug, Clone, Deserialize)]
-pub struct System {
+pub struct CellModel {
     pub iv: Variable,
     pub params: Vec<Variable>,
     pub states: Vec<Variable>,
@@ -351,7 +378,16 @@ pub struct System {
     pub obs: Vec<Equation>,
 }
 
-impl Lower for System {
+impl CellModel {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<CellModel, Box<dyn Error>> {
+        let file = File::open(path)?;
+        let reader = BufReader::new(file);
+        let ml = serde_json::from_reader(reader)?;
+        Ok(ml)
+    }
+}
+    
+impl Lower for CellModel {    
     fn lower(&self, prog: &mut Program) -> Reg {
         for eq in &self.obs {
             eq.lower(prog);
@@ -362,12 +398,6 @@ impl Lower for System {
         };
         
         Reg(0)
-    }
+    }   
 }
 
-pub fn load_system<P: AsRef<Path>>(path: P) -> Result<System, Box<dyn Error>> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let sys = serde_json::from_reader(reader)?;
-    Ok(sys)
-}

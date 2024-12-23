@@ -28,15 +28,19 @@ fn fact(mut n: i32, y: i32) -> i32 {
 fn write_code() {
     let q = fact as *mut u8;
     let mut v: Vec<u8> = Vec::new();
-    for i in 0..100 {
-        v.push(unsafe { *q.offset(i) });
-    }
-    //let mut v = unsafe { Vec::from_raw_parts(add as *mut u8, 100, 100) };    
+    let q: Vec<u8> = vec![0x55, 0x53, 0x5b, 0x5d, 0xc3];
+    
+    for x in q {
+        //v.push(unsafe { *q.offset(i) });
+        v.push(x);
+    }    
+    
     let mut fs = File::create("code.bin").unwrap();
     fs.write(&v).unwrap();
     //println!("{:?}", &v);
 }
 
+#[test]
 pub fn test_codegen() {
     write_code();
     let fs = File::open("code.bin").unwrap();

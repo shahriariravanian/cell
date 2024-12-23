@@ -1,6 +1,9 @@
-use crate::register::Reg;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;
 
-type Tac = fn (f64, f64) -> f64;
+
+use crate::register::Reg;
 
 pub enum Instruction {
     Op{
@@ -8,7 +11,7 @@ pub enum Instruction {
         x: Reg,
         y: Reg,
         dst: Reg,
-        f: Tac
+        f: fn (f64, f64) -> f64,
     },
     Num {
         val: f64,
@@ -51,7 +54,7 @@ impl Code {
         x - y
     }
     
-    pub fn neg(x: f64, y: f64) -> f64 {
+    pub fn neg(x: f64, _y: f64) -> f64 {
         -x
     }
     
@@ -165,6 +168,47 @@ impl Code {
     
     pub fn root(x: f64, _y: f64) -> f64 {
         x.sqrt()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct Intermediate {
+    pub tac: Vec<(usize, usize, usize, usize)>, // three-address code 
+    pub vt: Vec<fn (f64, f64) -> f64>,          // virtual table, a list of funciton pointers
+}
+
+impl Intermediate {
+    pub fn new(code: Rc<RefCell<Vec<Instruction>>>) -> Intermediate {
+        let mut procs: HashMap<&str, usize> = HashMap::new();
+        let mut tac = Vec::new();
+        let mut vt = Vec::new();
+        
+        for c in code.borrow().iter()  {
+            match c {
+                Instruction::Num {..} => {},    // Num and Var do not generate any code 
+                Instruction::Var {..} => {},    // They are mainly for debugging
+                Instruction::Op {f, x, y, dst, op} => { 
+                    let idx = match procs.get::<str>(&op[..]) {
+                        Some(idx) => *idx,
+                        None => {
+                            let idx = vt.len();
+                            procs.insert(&op[..], idx);
+                            vt.push(*f);
+                            idx
+                        }
+                    };
+                    tac.push((idx, dst.0, x.0, y.0));                    
+                },
+            };            
+        };
+        Intermediate { tac, vt }
+    }
+    
+    pub fn run(&self, mem: &mut Vec<f64>) {
+        for (f, dst, x, y) in &self.tac {
+            mem[*dst] = self.vt[*f](mem[*x], mem[*y]);
+        }
     }
 }
 
