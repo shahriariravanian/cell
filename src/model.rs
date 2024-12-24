@@ -23,13 +23,14 @@ pub trait Lower {
 // collects instructions and registers
 #[derive(Debug)]
 pub struct Program {
-    pub code:   Rc<RefCell<Vec<Instruction>>>,
-    pub frame:  Frame
+    pub code:   Vec<Instruction>,       // the list of instructions
+    pub frame:  Frame,                  // memory (states, registers, constants, ...)
+    pub vt:     Vec<fn(f64,f64)->f64>,  // virtual table
 }
 
 impl Program {
     pub fn new(ml: &CellModel) -> Program {
-        let mut frame = Frame::new();
+        let mut frame = Frame::new();        
 
         frame.alloc(RegType::Var(ml.iv.name.clone()), None);
         
@@ -43,17 +44,32 @@ impl Program {
         
         for v in &ml.params {
             frame.alloc(RegType::Param(v.name.clone()), Some(v.val));
-        }                
+        }             
     
         Program {
-            code:   Rc::new(RefCell::new(vec![])),
-            frame
+            code:   Vec::new(),  
+            frame,
+            vt:     Vec::new(),
         }
     }
-    
+        
+    // pushes a non-op into code
+    // useful for debugging
     pub fn push(&mut self, s: Instruction) {
-        self.code.borrow_mut().push(s)
+        self.code.push(s)
     }
+        
+    // pushes an Op into code and adjusts the virtual table accordingly
+    pub fn push_op(&mut self, op: &str, f: fn(f64,f64)->f64, x: Reg, y: Reg, dst: Reg) {
+        let p = match self.vt.iter().position(|&g| f == g) {
+            Some(p) => p,
+            None => {                
+                self.vt.push(f);
+                self.vt.len() - 1
+            }
+        };
+        self.code.push(Instruction::Op { op: op.to_string(), x, y, dst, p: Proc(p) })
+    }        
     
     // allocates a constant register
     pub fn alloc_const(&mut self, val: f64) -> Reg {
@@ -88,6 +104,19 @@ impl Program {
             return r;
         }
         panic!("cannot find diff by name");
+    }    
+
+    // runs the program using a bytecode interpreter
+    pub fn run(&self, mem: &mut Vec<f64>, vt: &Vec<fn (f64, f64) -> f64>) {    
+        for c in self.code.iter()  {
+            match c {
+                Instruction::Num {..} => {},    // Num and Var do not generate any code 
+                Instruction::Var {..} => {},    // They are mainly for debugging
+                Instruction::Op {p, x, y, dst, ..} => { 
+                    mem[dst.0] = self.vt[p.0](mem[x.0], mem[y.0]);
+                }
+            }
+        }
     }
 }
 
@@ -95,39 +124,38 @@ impl Program {
 // abstracts a function passed to an ODE solver
 #[derive(Debug)]
 pub struct Function {
-    pub inter:          Intermediate,
+    pub prog:           Program,
     pub mem:            Vec<f64>,    
-    pub u0:             Vec<f64>,
+    pub compiled:       Compiled,    
     pub first_state:    usize,
     pub count_states:   usize,
     pub first_param:    usize,
-    pub count_params:   usize,    
-    pub compiled:       Compiled
+    pub count_params:   usize,   
+    pub u0:             Vec<f64>,     
 }
 
 impl Function {
-    pub fn new(prog: &Program) -> Function {
-        let inter = Intermediate::new(prog.code.clone());
+    pub fn new(prog: Program) -> Function {
+        // Function consumes Program
         let mem = prog.frame.mem();
+        let compiled = Amd64::new().compile(&prog);
                 
         let first_state = prog.frame.first_state().unwrap();
         let count_states = prog.frame.count_states();
         let first_param = prog.frame.first_param().unwrap();
         let count_params = prog.frame.count_params();
         
-        let u0 = &mem[first_state..first_state+count_states].to_vec();        
-        
-        let compiled = Amd64::new().compile(&inter);
+        let u0 = mem[first_state..first_state+count_states].to_vec();              
 
         Function {
-            inter,
+            prog,
             mem,
-            u0: u0.clone(),
+            compiled,
             first_state,
             count_states,
             first_param,
             count_params,
-            compiled
+            u0,
         }
     }
     
@@ -141,8 +169,8 @@ impl Function {
     }    
     
     pub fn run(&mut self) {        
-        //self.inter.run(&mut self.mem);     
-        self.compiled.run(&self.mem, &self.inter.vt);
+        // self.prog.run(&mut self.mem, &self.prog.vt);
+        self.compiled.run(&mut self.mem, &self.prog.vt);
     }
 }
 
@@ -225,9 +253,9 @@ impl Expr {
             "ln"    => Code::ln,
             "root"  => Code::root,
             _       => { panic!("missing op: {}", op); }
-        };
-        
-        prog.push(Instruction::Op { op: op.to_string(), f, x, y, dst });                
+        };        
+
+        prog.push_op(op, f, x, y, dst);                
         prog.free(x);
         dst
     }
@@ -253,9 +281,9 @@ impl Expr {
             "or"        => Code::or,
             "xor"       => Code::xor,
             _           => { panic!("missing op: {}", op); }
-        };
-        
-        prog.push(Instruction::Op { op: op.to_string(), f, x, y, dst });        
+        };        
+
+        prog.push_op(op, f, x, y, dst);
         prog.free(x);
         prog.free(y);
         dst
@@ -271,11 +299,11 @@ impl Expr {
         let y2 = args[2].lower(prog);
         let t1 = prog.alloc_temp();
         let t2 = prog.alloc_temp();    
-        let dst = prog.alloc_temp();     
-          
-        prog.push(Instruction::Op { op: "if_pos".to_string(), f: Code::if_pos, x, y: y1, dst: t1 });
-        prog.push(Instruction::Op { op: "if_neg".to_string(), f: Code::if_neg, x, y: y2, dst: t2 });
-        prog.push(Instruction::Op { op: "plus".to_string(), f: Code::plus, x: t1, y: t2, dst });
+        let dst = prog.alloc_temp();               
+        
+        prog.push_op("if_pos", Code::if_pos, x, y1, t1);        
+        prog.push_op("if_neg", Code::if_neg, x, y2, t2);
+        prog.push_op("plus", Code::plus, t1, t2, dst);
         
         prog.free(x);
         prog.free(y1);
@@ -297,7 +325,7 @@ impl Expr {
         for i in 1..args.len() {
             let y = args[i].lower(prog);
             let dst = prog.alloc_temp();
-            prog.push(Instruction::Op { op: op.to_string(), f, x, y, dst });
+            prog.push_op(op, f, x, y, dst);
             prog.free(x);
             x = dst;
         };
@@ -320,7 +348,7 @@ impl Lower for Expr {
                     // let dst = prog.alloc_temp();
                     // prog.push(Instruction::Num { val: *val, dst });
                     let dst = prog.alloc_const(*val);                    
-                    prog.push(Instruction::Num { val: *val, dst }); // not needed for code generation, useful for debugging
+                    prog.push(Instruction::Num { val: *val, dst }); // not needed for code generation, useful for debugging                    
                     dst
                 }
             },
@@ -362,7 +390,7 @@ impl Lower for Equation {
             panic!("undefined diff variable");
         };
         
-        prog.push(Instruction::Op { op: "mov".to_string(), f: Code::mov, x: src, y: Reg(0), dst });
+        prog.push_op("mov", Code::mov, src, Reg(0), dst);
         Reg(0)
     }
 }

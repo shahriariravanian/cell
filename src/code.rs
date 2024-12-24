@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-
 use crate::register::Reg;
+
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+pub struct Proc(pub usize);
 
 pub enum Instruction {
     Op{
@@ -11,7 +13,8 @@ pub enum Instruction {
         x: Reg,
         y: Reg,
         dst: Reg,
-        f: fn (f64, f64) -> f64,
+        // f: fn (f64, f64) -> f64,
+        p: Proc
     },
     Num {
         val: f64,
@@ -41,7 +44,7 @@ impl std::fmt::Debug for Instruction {
 
 pub struct Code {}
 
-impl Code {
+impl Code {        
     pub fn mov(x: f64, _y: f64) -> f64 {
         x
     }
@@ -168,47 +171,6 @@ impl Code {
     
     pub fn root(x: f64, _y: f64) -> f64 {
         x.sqrt()
-    }
-}
-
-
-#[derive(Debug)]
-pub struct Intermediate {
-    pub tac: Vec<(usize, usize, usize, usize)>, // three-address code 
-    pub vt: Vec<fn (f64, f64) -> f64>,          // virtual table, a list of funciton pointers
-}
-
-impl Intermediate {
-    pub fn new(code: Rc<RefCell<Vec<Instruction>>>) -> Intermediate {
-        let mut procs: HashMap<&str, usize> = HashMap::new();
-        let mut tac = Vec::new();
-        let mut vt = Vec::new();
-        
-        for c in code.borrow().iter()  {
-            match c {
-                Instruction::Num {..} => {},    // Num and Var do not generate any code 
-                Instruction::Var {..} => {},    // They are mainly for debugging
-                Instruction::Op {f, x, y, dst, op} => { 
-                    let idx = match procs.get::<str>(&op[..]) {
-                        Some(idx) => *idx,
-                        None => {
-                            let idx = vt.len();
-                            procs.insert(&op[..], idx);
-                            vt.push(*f);
-                            idx
-                        }
-                    };
-                    tac.push((idx, dst.0, x.0, y.0));                    
-                },
-            };            
-        };
-        Intermediate { tac, vt }
-    }
-    
-    pub fn run(&self, mem: &mut Vec<f64>) {
-        for (f, dst, x, y) in &self.tac {
-            mem[*dst] = self.vt[*f](mem[*x], mem[*y]);
-        }
-    }
+    }    
 }
 

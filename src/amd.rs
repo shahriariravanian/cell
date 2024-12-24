@@ -3,6 +3,7 @@ use std::io::Write;
 use memmap2::{MmapOptions, Mmap};
 
 use crate::code::*;
+use crate::model::Program;
 
 #[derive(Debug)]
 pub struct Amd64 {
@@ -33,24 +34,30 @@ impl Amd64 {
         }
     }
     
-    pub fn compile(&mut self, inter: &Intermediate) -> Compiled {
-        self.push_reg(Self::RBP);
-        self.push_reg(Self::RBX);
+    pub fn compile(&mut self, prog: &Program) -> Compiled {
+        self.push_reg(Self::RBP);                           // push   rbp
+        self.push_reg(Self::RBX);                           // push   rbx
         
-        self.move_reg(Self::RBP, Self::RDI);
-        self.move_reg(Self::RBX, Self::RDX);
+        self.move_reg(Self::RBP, Self::RDI);                // mov    rbp,rdi
+        self.move_reg(Self::RBX, Self::RDX);                // mov    rbx,rdx
         
-        for (f, dst, x, y) in inter.tac.iter() {
-            self.load_xmm(Self::XMM0, Self::RBP, 8*x);
-            self.load_xmm(Self::XMM1, Self::RBP, 8*y);
-            self.load_reg(Self::RAX, Self::RBX, 8*f);
-            self.call_reg(Self::RAX);
-            self.save_xmm(Self::XMM0, Self::RBP, 8*dst);
+        for c in prog.code.iter()  {
+            match c {
+                Instruction::Num {..} => {},                        // Num and Var do not generate any code 
+                Instruction::Var {..} => {},                        // They are mainly for debugging
+                Instruction::Op {p, x, y, dst, ..} => { 
+                    self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
+                    self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
+                    self.load_reg(Self::RAX, Self::RBX, 8*p.0);     // mov    rax,QWORD PTR [rbx+8*f]
+                    self.call_reg(Self::RAX);                       // call   rax
+                    self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
+                }
+            }
         }                
         
-        self.pop_reg(Self::RBX);
-        self.pop_reg(Self::RBP);
-        self.ret();
+        self.pop_reg(Self::RBX);                            // pop    rbx
+        self.pop_reg(Self::RBP);                            // pop    rbp
+        self.ret();                                         // ret
         
         Compiled::new(&self.buf)
     }
@@ -143,9 +150,9 @@ impl Compiled {
         fs.write(buf).unwrap();     
     }
     
-    pub fn run(&self, mem: &Vec<f64>, vt: &Vec<fn (f64, f64) -> f64>) {    
+    pub fn run(&self, mem: &mut Vec<f64>, vt: &Vec<fn (f64, f64) -> f64>) {    
         let f: fn (&[f64], &[fn(f64, f64) -> f64])  = unsafe { std::mem::transmute(self.p) };    
-        f(&mem[..], &vt[..]);                
+        f(&mut mem[..], &vt[..]);                
     }
 }
 
