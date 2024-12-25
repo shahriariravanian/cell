@@ -4,6 +4,7 @@ use memmap2::{MmapOptions, Mmap};
 
 use crate::code::*;
 use crate::model::Program;
+use crate::register::Reg;
 
 #[derive(Debug)]
 pub struct Amd64 {
@@ -39,27 +40,82 @@ impl Amd64 {
         self.push_reg(Self::RBX);                           // push   rbx
         
         self.move_reg(Self::RBP, Self::RDI);                // mov    rbp,rdi
-        self.move_reg(Self::RBX, Self::RDX);                // mov    rbx,rdx
+        self.move_reg(Self::RBX, Self::RDX);                // mov    rbx,rdx        
+        
+        let mut r = Reg(0);
         
         for c in prog.code.iter()  {
             match c {
                 Instruction::Num {..} => {},                        // Num and Var do not generate any code 
                 Instruction::Var {..} => {},                        // They are mainly for debugging
-                Instruction::Op {p, x, y, dst, ..} => { 
-                    self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
-                    self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
-                    self.load_reg(Self::RAX, Self::RBX, 8*p.0);     // mov    rax,QWORD PTR [rbx+8*f]
-                    self.call_reg(Self::RAX);                       // call   rax
-                    self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
+                Instruction::Op {p, x, y, dst, op} => { 
+                    /*
+                        self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
+                        self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
+                        self.op_code(&op, *p);
+                        self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
+                    */
+                    if op == "mov" {
+                        if r != *x {
+                            self.save_xmm_reg(Self::XMM0, r);                            
+                            self.load_xmm_reg(Self::XMM0, *x);
+                        }
+                    } else {
+                        if r == *x {
+                            self.load_xmm_reg(Self::XMM1, *y);    
+                        } else if r == *y {
+                            self.move_xmm(Self::XMM1, Self::XMM0);
+                            self.load_xmm_reg(Self::XMM0, *x);
+                        } else {
+                            self.save_xmm_reg(Self::XMM0, r);
+                            self.load_xmm_reg(Self::XMM0, *x);
+                            self.load_xmm_reg(Self::XMM1, *y);
+                        }
+                        self.op_code(&op, *p);
+                    }
+                    r = *dst;
                 }
             }
-        }                
+        }               
+        
+        self.save_xmm_reg(Self::XMM0, r); 
         
         self.pop_reg(Self::RBX);                            // pop    rbx
         self.pop_reg(Self::RBP);                            // pop    rbp
         self.ret();                                         // ret
         
         Compiled::new(&self.buf)
+    }
+    
+    fn op_code(&mut self, op: &str, p: Proc) {
+        match op {
+            "mov" =>    {},
+            "plus" =>   self.buf.extend_from_slice(&[0xf2, 0x0f, 0x58, 0xc1]),
+            "minus" =>  self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5c, 0xc1]),
+            "times" =>  self.buf.extend_from_slice(&[0xf2, 0x0f, 0x59, 0xc1]),
+            "divide" => self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5e, 0xc1]),            
+            "gt" =>     self.comparison(0x77),      // ja
+            "geq" =>    self.comparison(0x73),      // jae
+            "lt" =>     self.comparison(0x72),      // jb
+            "leq" =>    self.comparison(0x76),      // jbe
+            "eq" =>     self.comparison(0x74),      // je
+            "neq" =>    self.comparison(0x75),      // jne
+            _ => {
+                // println!("{:x}:\t{}", self.buf.len(), op);
+                self.load_reg(Self::RAX, Self::RBX, 8*p.0);     // mov    rax,QWORD PTR [rbx+8*f]
+                self.call_reg(Self::RAX);                       // call   rax                            
+            }
+        }
+    }    
+    
+    fn comparison(&mut self, code: u8) {
+        self.buf.extend_from_slice(&[0x66, 0x0f, 0x2e, 0xc1]);  // ucomisd xmm0, xmm1
+        self.buf.push(code);                        // Jx code
+        self.buf.push(0x07);                        // jump 5 + 2 bytes
+        self.load_xmm(Self::XMM0, Self::RBP, 16);   // Reg(2) = -1
+        self.buf.push(0xeb);                        // JMP
+        self.buf.push(0x05);                        // jump 5 bytes
+        self.load_xmm(Self::XMM0, Self::RBP, 8);    // Reg(1) = 1
     }
     
     fn push_reg(&mut self, r: u8) {
@@ -107,6 +163,28 @@ impl Amd64 {
         self.buf.push(0x8b);    // MOV
         self.modrm_mem(r, base, offset);
     }    
+    
+    fn move_xmm(&mut self, dst: u8, src: u8) {
+        self.buf.extend_from_slice(&[0xf2, 0x0f, 0x10]);
+        self.modrm_reg(src, dst);
+    }
+    
+    fn load_xmm_reg(&mut self, r: u8, x: Reg) {
+        if x == Reg(0) {
+            self.buf.push(0x66);    // XORPD r, r
+            self.buf.push(0x0f);
+            self.buf.push(0x57);
+            self.modrm_reg(r, r);
+        } else {
+            self.load_xmm(r, Self::RBP, 8*x.0);
+        }
+    }
+    
+    fn save_xmm_reg(&mut self, r: u8, x: Reg) {
+        if x.0 > 2 {
+            self.save_xmm(r, Self::RBP, 8*x.0);
+        }
+    }
     
     fn load_xmm(&mut self, r: u8, base: u8, offset: usize) {
         self.buf.push(0xf2);

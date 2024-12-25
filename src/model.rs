@@ -176,7 +176,7 @@ impl Function {
 
 impl Callable for Function {
     fn call(&mut self, du: &mut Vector, u: &Vector, t: f64) {
-        self.mem[2] = t;    // TODO: hardcoded iv address        
+        self.mem[3] = t;    // TODO: hardcoded iv address        
         
         let p = &mut self.mem[self.first_state..self.first_state+self.count_states];
         p.copy_from_slice(u.as_slice());
@@ -339,11 +339,14 @@ impl Lower for Expr {
         match self {
             Expr::Const { val } => {
                 // Optimization!
-                // we assume that the value of Reg(0) is 0.0 and Reg(1) is -1
+                // we assume that the value of Reg(0) is 0.0, Reg(1) is 1, 
+                // and Reg(2) is -1
                 if *val == 0.0 {
                     Reg(0)
-                } else if *val == -1.0 {
+                } else if *val == 1.0 {
                     Reg(1)
+                } else if *val == -1.0 {
+                    Reg(2)
                 } else{
                     // let dst = prog.alloc_temp();
                     // prog.push(Instruction::Num { val: *val, dst });

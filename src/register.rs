@@ -34,6 +34,7 @@ impl Frame {
         };
         
         f.alloc(RegType::Const, Some(0.0));
+        f.alloc(RegType::Const, Some(1.0));
         f.alloc(RegType::Const, Some(-1.0));
         
         f
