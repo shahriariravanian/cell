@@ -1,11 +1,14 @@
 use std::ops::Range;
 use std::fmt;
 
+use crate::utils::{Vector, Callable};
 use crate::vector::*;
 
+/*
 pub trait Callable {
     fn call(&mut self, du: &mut Vector, u: &Vector, t: f64);   
 }
+*/
 
 #[derive(Debug, Clone)]
 pub struct Row {pub t: f64, pub x: Vector}

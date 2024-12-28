@@ -228,9 +228,9 @@ impl Compiled {
         fs.write(buf).unwrap();     
     }
     
-    pub fn run(&self, mem: &mut Vec<f64>, vt: &Vec<fn (f64, f64) -> f64>) {    
+    pub fn run(&self, mem: &mut [f64], vt: &[fn (f64, f64) -> f64]) {    
         let f: fn (&[f64], &[fn(f64, f64) -> f64])  = unsafe { std::mem::transmute(self.p) };    
-        f(&mut mem[..], &vt[..]);                
+        f(mem, vt);                
     }
 }
 

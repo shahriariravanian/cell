@@ -1,7 +1,3 @@
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::cell::RefCell;
-
 use crate::register::Reg;
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]

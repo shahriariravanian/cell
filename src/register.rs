@@ -1,11 +1,15 @@
 use std::collections::HashMap;
+use serde::Serialize;
+use std::error::Error;
 
 // Unit-like structure abstracting a single register
 // it covers the index of the register in mem
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Reg(pub usize);
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize)]
+// Adjacency tagging (https://serde.rs/enum-representations.html)
+#[serde(tag = "t", content = "c")]  
 pub enum RegType {
     Const,
     Var(String),
@@ -109,6 +113,10 @@ impl Frame {
             .iter()
             .map(|x| x.1.unwrap_or(0.0))
             .collect::<Vec<f64>>()            
+    }
+    
+    pub fn as_json(&self) -> Result<String, Box<dyn Error>> {
+        Ok(serde_json::to_string(&self.regs)?)
     }
 }
 

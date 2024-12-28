@@ -1,14 +1,17 @@
 use std::ops::{Add, Sub, Mul, Div, Deref, DerefMut};
 use std::ops::{AddAssign, SubAssign, MulAssign, DivAssign};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Vector (pub Vec<f64>);
+use crate::utils::*;
+
+//#[derive(Debug, Clone, PartialEq)]
+//pub struct Vector (pub Vec<f64>);
 
 impl Vector {
+/*
     fn new(v: Vec<f64>) -> Vector {
         Vector(v)
     }
-    
+*/    
     fn sum(&self) -> f64 {
         self.iter().sum()
     }
@@ -24,6 +27,7 @@ impl Vector {
 
 /**************** Deref *********************/
 
+/*
 impl Deref for Vector {
     type Target = Vec<f64>;
     
@@ -37,6 +41,7 @@ impl DerefMut for Vector {
         &mut self.0
     }
 }
+*/
 
 /*
 *   There are multiple forms of each operator:

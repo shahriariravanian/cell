@@ -1,17 +1,9 @@
 use serde::Deserialize;
-
 use std::error::Error;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::Path;
-
-use std::rc::Rc;
-use std::cell::RefCell;
 
 use crate::register::*;
 use crate::code::*;
-use crate::vector::*;
-use crate::solvers::*;
+use crate::utils::{Vector, Callable};
 use crate::amd::*;
 
 // lowers Expr and its constituents into a three-address_code format
@@ -46,11 +38,15 @@ impl Program {
             frame.alloc(RegType::Param(v.name.clone()), Some(v.val));
         }             
     
-        Program {
+        let mut prog = Program {
             code:   Vec::new(),  
             frame,
             vt:     Vec::new(),
-        }
+        };
+        
+        ml.lower(&mut prog);
+        
+        prog
     }
         
     // pushes a non-op into code
@@ -113,7 +109,7 @@ impl Program {
                 Instruction::Num {..} => {},    // Num and Var do not generate any code 
                 Instruction::Var {..} => {},    // They are mainly for debugging
                 Instruction::Op {p, x, y, dst, ..} => { 
-                    mem[dst.0] = self.vt[p.0](mem[x.0], mem[y.0]);
+                    mem[dst.0] = vt[p.0](mem[x.0], mem[y.0]);
                 }
             }
         }
@@ -169,8 +165,12 @@ impl Function {
     }    
     
     pub fn run(&mut self) {        
-        // self.prog.run(&mut self.mem, &self.prog.vt);
-        self.compiled.run(&mut self.mem, &self.prog.vt);
+        // self.prog.run(&mut self.mem[..], &self.prog.vt[..]);
+        self.compiled.run(&mut self.mem[..], &self.prog.vt[..]);
+    }
+    
+    pub fn run_mem(&self, mem: &mut [f64]) {        
+        self.compiled.run(mem, &self.prog.vt[..]);
     }
 }
 
@@ -410,11 +410,8 @@ pub struct CellModel {
 }
 
 impl CellModel {
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<CellModel, Box<dyn Error>> {
-        let file = File::open(path)?;
-        let reader = BufReader::new(file);
-        let ml = serde_json::from_reader(reader)?;
-        Ok(ml)
+    pub fn load(text: &str) -> Result<CellModel, Box<dyn Error>> {
+        Ok(serde_json::from_str(text)?)
     }
 }
     
