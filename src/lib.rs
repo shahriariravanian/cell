@@ -6,7 +6,32 @@ mod model;
 mod code;
 mod amd;
 
-use crate::model::{CellModel, Program, Function};
+use crate::utils::*;
+use crate::model::{CellModel, Program};
+use crate::amd::*;
+
+pub struct Function {
+    pub prog:           Program,
+    pub compiled:       Box<dyn Compiled>,    
+}
+
+impl Function {
+    pub fn new(mut prog: Program) -> Function {
+        // prog.calc_virtual_table();
+        // Function consumes Program
+        let compiled = Box::new(NativeCompiler::new().compile(&prog));
+        
+        Function {
+            prog,
+            compiled,         
+        }
+    }
+
+    pub fn run_mem(&self, mem: &mut [f64]) {        
+        // self.compiled.run(mem, &self.prog.vt[..]);
+        self.compiled.run(mem);
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum CompilerStatus {
@@ -16,7 +41,6 @@ pub enum CompilerStatus {
     ParseError
 }
 
-#[derive(Debug)]
 pub struct CompilerResult { 
     func:   Option<Function>,
     regs:   CString,

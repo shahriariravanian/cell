@@ -2,25 +2,18 @@ use std::ops::Range;
 use std::fmt;
 
 use crate::utils::{Vector, Callable};
-use crate::vector::*;
-
-/*
-pub trait Callable {
-    fn call(&mut self, du: &mut Vector, u: &Vector, t: f64);   
-}
-*/
 
 #[derive(Debug, Clone)]
 pub struct Row {pub t: f64, pub x: Vector}
 
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.t);
+        let _ = write!(f, "{}", self.t);
         let x = &self.x;
         for j in 0..x.len() {
-            write!(f, "\t{}", x[j]);
+            let _ = write!(f, "\t{}", x[j]);
         }   
-        writeln!(f, "");
+        let _ = writeln!(f, "");
         Ok(())
     }    
 }

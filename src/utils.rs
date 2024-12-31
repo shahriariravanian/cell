@@ -5,15 +5,10 @@
 */
 
 use std::ops::{Deref, DerefMut};
+use crate::model::Program;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Vector (pub Vec<f64>);
-
-impl Vector {
-    fn new(v: Vec<f64>) -> Vector {
-        Vector(v)
-    }
-}
 
 /**************** Deref *********************/
 
@@ -35,5 +30,15 @@ impl DerefMut for Vector {
 
 pub trait Callable {
     fn call(&mut self, du: &mut Vector, u: &Vector, t: f64);   
+}
+
+/********************************************/
+
+pub trait Compiled {
+    fn run(&self, mem: &mut [f64]);    
+}
+
+pub trait Compiler<T: Compiled> {
+    fn compile(&mut self, prog: &Program) -> T;
 }
 

@@ -38,9 +38,52 @@ impl std::fmt::Debug for Instruction {
     }
 }
 
+pub type BinaryFunc = fn(f64, f64) -> f64;
+
 pub struct Code {}
 
 impl Code {        
+    pub fn from_str(op: &str) -> BinaryFunc {
+        match op {
+            "mov" =>    Code::mov,
+            "plus" =>   Code::plus,
+            "minus" =>  Code::minus,
+            "neg" =>    Code::neg,
+            "times" =>  Code::times,
+            "divide" => Code::divide,
+            "rem" =>    Code::rem,
+            "power" =>  Code::power,
+            "gt" =>     Code::gt,
+            "geq" =>    Code::geq,
+            "lt" =>     Code::lt,
+            "leq" =>    Code::leq,
+            "eq" =>     Code::eq,
+            "neq" =>    Code::neq,
+            "and" =>    Code::and, 
+            "or" =>     Code::or,
+            "xor" =>    Code::xor,
+            "if_pos" => Code::if_pos,
+            "if_neg" => Code::if_neg,
+            "sin" =>    Code::sin,
+            "cos" =>    Code::cos,
+            "tan" =>    Code::tan,
+            "csc" =>    Code::csc,
+            "sec" =>    Code::sec,
+            "cot" =>    Code::cot,
+            "arcsin" => Code::asin,
+            "arccos" => Code::acos,
+            "arctan" => Code::atan,
+            "exp" =>    Code::exp,
+            "ln" =>     Code::ln,
+            "log" =>    Code::log,
+            "root" =>   Code::root,
+            _  =>       { 
+                let msg = format!("op_code {} not found", op);
+                panic!("{}", msg)
+            }
+        }
+    }
+
     pub fn mov(x: f64, _y: f64) -> f64 {
         x
     }

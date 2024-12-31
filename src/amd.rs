@@ -1,17 +1,19 @@
-use std::fs::File;
+use std::fs;
 use std::io::Write;
 use memmap2::{MmapOptions, Mmap};
+use rand::distributions::{Alphanumeric, DistString};
 
 use crate::code::*;
 use crate::model::Program;
 use crate::register::Reg;
+use crate::utils::*;
 
 #[derive(Debug)]
-pub struct Amd64 {
+pub struct NativeCompiler {
     pub buf: Vec<u8>
 }
 
-impl Amd64 {
+impl NativeCompiler {
     const XMM0: u8 = 0;    
     const XMM1: u8 = 1;    
     const XMM2: u8 = 2;    
@@ -29,71 +31,19 @@ impl Amd64 {
     const RSI: u8 = 6;    
     const RDI: u8 = 7;    
     
-    pub fn new() -> Amd64 {
+    pub fn new() -> NativeCompiler {
         Self {
             buf: Vec::new()
         }
-    }
-    
-    pub fn compile(&mut self, prog: &Program) -> Compiled {
-        self.push_reg(Self::RBP);                           // push   rbp
-        self.push_reg(Self::RBX);                           // push   rbx
-        
-        self.move_reg(Self::RBP, Self::RDI);                // mov    rbp,rdi
-        self.move_reg(Self::RBX, Self::RDX);                // mov    rbx,rdx        
-        
-        let mut r = Reg(0);
-        
-        for c in prog.code.iter()  {
-            match c {
-                Instruction::Num {..} => {},                        // Num and Var do not generate any code 
-                Instruction::Var {..} => {},                        // They are mainly for debugging
-                Instruction::Op {p, x, y, dst, op} => { 
-                    /*
-                        self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
-                        self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
-                        self.op_code(&op, *p);
-                        self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
-                    */
-                    if op == "mov" {
-                        if r != *x {
-                            self.save_xmm_reg(Self::XMM0, r);                            
-                            self.load_xmm_reg(Self::XMM0, *x);
-                        }
-                    } else {
-                        if r == *x {
-                            self.load_xmm_reg(Self::XMM1, *y);    
-                        } else if r == *y {
-                            self.move_xmm(Self::XMM1, Self::XMM0);
-                            self.load_xmm_reg(Self::XMM0, *x);
-                        } else {
-                            self.save_xmm_reg(Self::XMM0, r);
-                            self.load_xmm_reg(Self::XMM0, *x);
-                            self.load_xmm_reg(Self::XMM1, *y);
-                        }
-                        self.op_code(&op, *p);
-                    }
-                    r = *dst;
-                }
-            }
-        }               
-        
-        self.save_xmm_reg(Self::XMM0, r); 
-        
-        self.pop_reg(Self::RBX);                            // pop    rbx
-        self.pop_reg(Self::RBP);                            // pop    rbp
-        self.ret();                                         // ret
-        
-        Compiled::new(&self.buf)
-    }
+    }    
     
     fn op_code(&mut self, op: &str, p: Proc) {
         match op {
             "mov" =>    {},
-            "plus" =>   self.buf.extend_from_slice(&[0xf2, 0x0f, 0x58, 0xc1]),
-            "minus" =>  self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5c, 0xc1]),
-            "times" =>  self.buf.extend_from_slice(&[0xf2, 0x0f, 0x59, 0xc1]),
-            "divide" => self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5e, 0xc1]),            
+            "plus" =>   self.buf.extend_from_slice(&[0xf2, 0x0f, 0x58, 0xc1]),  // addsd xmm0, xmm1
+            "minus" =>  self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5c, 0xc1]),  // subsd xmm0, xmm1
+            "times" =>  self.buf.extend_from_slice(&[0xf2, 0x0f, 0x59, 0xc1]),  // mulsd xmm0, xmm1
+            "divide" => self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5e, 0xc1]),  // divsd xmm0, xmm1
             "gt" =>     self.comparison(0x77),      // ja
             "geq" =>    self.comparison(0x73),      // jae
             "lt" =>     self.comparison(0x72),      // jb
@@ -201,36 +151,103 @@ impl Amd64 {
     }
 }
 
-
-#[derive(Debug)]
-pub struct Compiled {
-    p: *const u8,
-    mmap: Mmap,     // we need to store mmap and fs here, so that they are not dropped
-    fs: File,
+impl Compiler<MachineCode> for NativeCompiler {
+    fn compile(&mut self, prog: &Program) -> MachineCode {
+        self.push_reg(Self::RBP);                           // push   rbp
+        self.push_reg(Self::RBX);                           // push   rbx
+        
+        self.move_reg(Self::RBP, Self::RDI);                // mov    rbp,rdi
+        self.move_reg(Self::RBX, Self::RDX);                // mov    rbx,rdx        
+        
+        let mut r = Reg(0);
+        
+        for c in prog.code.iter()  {
+            match c {
+                Instruction::Num {..} => {},                        // Num and Var do not generate any code 
+                Instruction::Var {..} => {},                        // They are mainly for debugging
+                Instruction::Op {p, x, y, dst, op} => { 
+                    /*
+                        self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
+                        self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
+                        self.op_code(&op, *p);
+                        self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
+                    */
+                    if op == "mov" {
+                        if r != *x {
+                            self.save_xmm_reg(Self::XMM0, r);                            
+                            self.load_xmm_reg(Self::XMM0, *x);
+                        }
+                    } else {
+                        if r == *x {
+                            self.load_xmm_reg(Self::XMM1, *y);    
+                        } else if r == *y {
+                            self.move_xmm(Self::XMM1, Self::XMM0);
+                            self.load_xmm_reg(Self::XMM0, *x);
+                        } else {
+                            self.save_xmm_reg(Self::XMM0, r);
+                            self.load_xmm_reg(Self::XMM0, *x);
+                            self.load_xmm_reg(Self::XMM1, *y);
+                        }
+                        self.op_code(&op, *p);
+                    }
+                    r = *dst;
+                }
+            }
+        }               
+        
+        self.save_xmm_reg(Self::XMM0, r); 
+        
+        self.pop_reg(Self::RBX);                            // pop    rbx
+        self.pop_reg(Self::RBP);                            // pop    rbp
+        self.ret();                                         // ret
+        
+        MachineCode::new(&self.buf, prog.virtual_table())
+    }
 }
 
-impl Compiled {
-    fn new(buf: &Vec<u8>) -> Compiled {
-        Compiled::write_buf(buf);
-        let fs = File::open("code.bin").unwrap();
+
+#[derive(Debug)]
+pub struct MachineCode {
+    p:      *const u8,
+    mmap:   Mmap,     // we need to store mmap and fs here, so that they are not dropped
+    name:   String,
+    fs:     fs::File,
+    vt:     Vec<BinaryFunc>,
+}
+
+impl MachineCode  {
+    fn new(buf: &Vec<u8>, vt: Vec<BinaryFunc>) -> MachineCode {
+        let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 16) + ".bin";
+        MachineCode::write_buf(buf, &name);
+        let fs = fs::File::open(&name).unwrap();
         let mmap = unsafe { MmapOptions::new().map_exec(&fs).unwrap() };
         let p = mmap.as_ptr() as *const u8;
         
-        Compiled{
+        MachineCode {
             p,
             mmap,
-            fs
+            name,
+            fs,
+            vt,
         }
     }
     
-    fn write_buf(buf: &Vec<u8>) {
-        let mut fs = File::create("code.bin").unwrap();
+    fn write_buf(buf: &Vec<u8>, name: &str) {
+        let mut fs = fs::File::create(name).unwrap();
         fs.write(buf).unwrap();     
     }
-    
-    pub fn run(&self, mem: &mut [f64], vt: &[fn (f64, f64) -> f64]) {    
-        let f: fn (&[f64], &[fn(f64, f64) -> f64])  = unsafe { std::mem::transmute(self.p) };    
-        f(mem, vt);                
+}
+
+impl Compiled for MachineCode {
+    fn run(&self, mem: &mut [f64]) {
+        let f: fn (&[f64], &[BinaryFunc])  = unsafe { std::mem::transmute(self.p) };
+        f(mem, &self.vt);
+    }
+}
+
+impl Drop for MachineCode {
+    fn drop(&mut self) {
+        fs::remove_file(&self.name);
     }
 }
 

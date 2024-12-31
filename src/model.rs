@@ -3,8 +3,6 @@ use std::error::Error;
 
 use crate::register::*;
 use crate::code::*;
-use crate::utils::{Vector, Callable};
-use crate::amd::*;
 
 // lowers Expr and its constituents into a three-address_code format
 pub trait Lower {
@@ -15,9 +13,9 @@ pub trait Lower {
 // collects instructions and registers
 #[derive(Debug)]
 pub struct Program {
-    pub code:   Vec<Instruction>,       // the list of instructions
-    pub frame:  Frame,                  // memory (states, registers, constants, ...)
-    pub vt:     Vec<fn(f64,f64)->f64>,  // virtual table
+    pub code:   Vec<Instruction>,   // the list of instructions
+    pub frame:  Frame,              // memory (states, registers, constants, ...)
+    pub ft:     Vec<String>,        // function table (used to generate a virtual table)
 }
 
 impl Program {
@@ -41,7 +39,7 @@ impl Program {
         let mut prog = Program {
             code:   Vec::new(),  
             frame,
-            vt:     Vec::new(),
+            ft:     Vec::new(),
         };
         
         ml.lower(&mut prog);
@@ -54,14 +52,14 @@ impl Program {
     pub fn push(&mut self, s: Instruction) {
         self.code.push(s)
     }
-        
+
     // pushes an Op into code and adjusts the virtual table accordingly
-    pub fn push_op(&mut self, op: &str, f: fn(f64,f64)->f64, x: Reg, y: Reg, dst: Reg) {
-        let p = match self.vt.iter().position(|&g| f == g) {
+    pub fn push_op(&mut self, op: &str, x: Reg, y: Reg, dst: Reg) {
+        let p = match self.ft.iter().position(|s| s == op) {
             Some(p) => p,
             None => {                
-                self.vt.push(f);
-                self.vt.len() - 1
+                self.ft.push(op.to_string());
+                self.ft.len() - 1
             }
         };
         self.code.push(Instruction::Op { op: op.to_string(), x, y, dst, p: Proc(p) })
@@ -114,79 +112,16 @@ impl Program {
             }
         }
     }
-}
-
-
-// abstracts a function passed to an ODE solver
-#[derive(Debug)]
-pub struct Function {
-    pub prog:           Program,
-    pub mem:            Vec<f64>,    
-    pub compiled:       Compiled,    
-    pub first_state:    usize,
-    pub count_states:   usize,
-    pub first_param:    usize,
-    pub count_params:   usize,   
-    pub u0:             Vec<f64>,     
-}
-
-impl Function {
-    pub fn new(prog: Program) -> Function {
-        // Function consumes Program
-        let mem = prog.frame.mem();
-        let compiled = Amd64::new().compile(&prog);
-                
-        let first_state = prog.frame.first_state().unwrap();
-        let count_states = prog.frame.count_states();
-        let first_param = prog.frame.first_param().unwrap();
-        let count_params = prog.frame.count_params();
-        
-        let u0 = mem[first_state..first_state+count_states].to_vec();              
-
-        Function {
-            prog,
-            mem,
-            compiled,
-            first_state,
-            count_states,
-            first_param,
-            count_params,
-            u0,
-        }
-    }
     
-    pub fn initial_states(&self) -> Vector {
-        Vector(self.u0.clone())
-    }
-    
-    pub fn params(&self) -> Vector {
-        let p = self.mem[self.first_param..self.first_param+self.count_params].to_vec();
-        Vector(p)
-    }    
-    
-    pub fn run(&mut self) {        
-        // self.prog.run(&mut self.mem[..], &self.prog.vt[..]);
-        self.compiled.run(&mut self.mem[..], &self.prog.vt[..]);
-    }
-    
-    pub fn run_mem(&self, mem: &mut [f64]) {        
-        self.compiled.run(mem, &self.prog.vt[..]);
+    pub fn virtual_table(&self) -> Vec<fn(f64,f64)->f64> {
+        let vt: Vec<fn(f64,f64)->f64> = self.ft
+            .iter()
+            .map(|s| Code::from_str(s))
+            .collect();
+        vt
     }
 }
 
-impl Callable for Function {
-    fn call(&mut self, du: &mut Vector, u: &Vector, t: f64) {
-        self.mem[3] = t;    // TODO: hardcoded iv address        
-        
-        let p = &mut self.mem[self.first_state..self.first_state+self.count_states];
-        p.copy_from_slice(u.as_slice());
-        
-        self.run();        
-        
-        let dp = &self.mem[self.first_state+self.count_states..self.first_state+2*self.count_states];
-        du.as_mut_slice().copy_from_slice(dp);
-    }
-}
 
 // A defined (state or param) variable
 #[derive(Debug, Clone, Deserialize)]
@@ -237,25 +172,7 @@ impl Expr {
         let x = args[0].lower(prog);
         let y = Reg(0);
         let dst = prog.alloc_temp();            
-        let f = match op {
-            "minus" => Code::neg,
-            "sin"   => Code::sin,
-            "cos"   => Code::cos,
-            "tan"   => Code::tan,
-            "csc"   => Code::csc,
-            "sec"   => Code::sec,
-            "cot"   => Code::cot,
-            "arcsin"  => Code::asin,
-            "arccos"  => Code::acos,
-            "arctan"  => Code::atan,            
-            "exp"   => Code::exp,
-            "log"   => Code::log,
-            "ln"    => Code::ln,
-            "root"  => Code::root,
-            _       => { panic!("missing op: {}", op); }
-        };        
-
-        prog.push_op(op, f, x, y, dst);                
+        prog.push_op(op, x, y, dst);                
         prog.free(x);
         dst
     }
@@ -264,26 +181,7 @@ impl Expr {
         let x = args[0].lower(prog);
         let y = args[1].lower(prog);
         let dst = prog.alloc_temp();        
-        let f = match op {
-            "plus"      => Code::plus,
-            "minus"     => Code::minus,
-            "times"     => Code::times,           
-            "divide"    => Code::divide,
-            "power"     => Code::power,
-            "rem"       => Code::rem,
-            "gt"        => Code::gt, 
-            "geq"       => Code::geq,
-            "lt"        => Code::lt,
-            "leq"       => Code::leq,
-            "eq"        => Code::eq,
-            "neq"       => Code::neq,
-            "and"       => Code::and,
-            "or"        => Code::or,
-            "xor"       => Code::xor,
-            _           => { panic!("missing op: {}", op); }
-        };        
-
-        prog.push_op(op, f, x, y, dst);
+        prog.push_op(op, x, y, dst);
         prog.free(x);
         prog.free(y);
         dst
@@ -301,9 +199,9 @@ impl Expr {
         let t2 = prog.alloc_temp();    
         let dst = prog.alloc_temp();               
         
-        prog.push_op("if_pos", Code::if_pos, x, y1, t1);        
-        prog.push_op("if_neg", Code::if_neg, x, y2, t2);
-        prog.push_op("plus", Code::plus, t1, t2, dst);
+        prog.push_op("if_pos", x, y1, t1);        
+        prog.push_op("if_neg", x, y2, t2);
+        prog.push_op("plus", t1, t2, dst);
         
         prog.free(x);
         prog.free(y1);
@@ -314,18 +212,16 @@ impl Expr {
         dst
     }
     
-    fn lower_poly(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg { 
-        let f = match op {
-            "plus"      => Code::plus,
-            "times"     => Code::times,
-            _           => { panic!("missing op: {}", op); }
-        };
+    fn lower_poly(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {         
+        if !(op == "plus" || op == "times") {
+            panic!("missing op: {}", op); 
+        }
         
         let mut x = args[0].lower(prog);
         for i in 1..args.len() {
             let y = args[i].lower(prog);
             let dst = prog.alloc_temp();
-            prog.push_op(op, f, x, y, dst);
+            prog.push_op(op, x, y, dst);
             prog.free(x);
             x = dst;
         };
@@ -349,7 +245,6 @@ impl Lower for Expr {
                     Reg(2)
                 } else{
                     // let dst = prog.alloc_temp();
-                    // prog.push(Instruction::Num { val: *val, dst });
                     let dst = prog.alloc_const(*val);                    
                     prog.push(Instruction::Num { val: *val, dst }); // not needed for code generation, useful for debugging                    
                     dst
@@ -393,7 +288,7 @@ impl Lower for Equation {
             panic!("undefined diff variable");
         };
         
-        prog.push_op("mov", Code::mov, src, Reg(0), dst);
+        prog.push_op("mov", src, Reg(0), dst);
         Reg(0)
     }
 }
