@@ -9,14 +9,22 @@ mod model;
 mod code;
 mod solvers;
 mod amd;
+mod interpreter;
 
 use crate::utils::*;
-use crate::model::*;
+use crate::model::{CellModel, Program};
 use crate::solvers::*;
-use crate::amd::*;
+use crate::amd::NativeCompiler;
+use crate::interpreter::Interpreter;
 
 
-pub struct Runnable {
+enum CompilerType {
+    ByteCode,
+    Native,
+    // Wasm,
+}
+
+struct Runnable {
     pub prog:           Program,
     pub mem:            Vec<f64>,    
     pub compiled:       Box<dyn Compiled>,    
@@ -27,12 +35,14 @@ pub struct Runnable {
     pub u0:             Vec<f64>,     
 }
 
-
 impl Runnable {
-    pub fn new(mut prog: Program) -> Runnable {
-        // prog.calc_virtual_table();
+    pub fn new(mut prog: Program, ty: CompilerType) -> Runnable {        
         let mem = prog.frame.mem();
-        let compiled = Box::new(NativeCompiler::new().compile(&prog));
+        
+        let compiled: Box<dyn Compiled> = match ty { 
+            CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
+            CompilerType::Native =>   Box::new(NativeCompiler::new().compile(&prog)),         
+        };
                 
         let first_state = prog.frame.first_state().unwrap();
         let count_states = prog.frame.count_states();
@@ -53,16 +63,16 @@ impl Runnable {
         }
     }
     
-    pub fn initial_states(&self) -> Vector {
+    fn initial_states(&self) -> Vector {
         Vector(self.u0.clone())
     }
     
-    pub fn params(&self) -> Vector {
+    fn params(&self) -> Vector {
         let p = self.mem[self.first_param..self.first_param+self.count_params].to_vec();
         Vector(p)
     }    
     
-    pub fn run(&mut self) {        
+    fn run(&mut self) {        
         // self.prog.run(&mut self.mem[..], &self.prog.vt[..]);
         self.compiled.run(&mut self.mem[..]);
     }
@@ -103,13 +113,9 @@ impl Callable for Runnable {
 fn main() {
     // test_codegen();
     let text = fs::read_to_string("julia/test.json").unwrap();
-    //let ml = CellModel::load("julia/test.json").unwrap();
     let ml = CellModel::load(&text).unwrap();
-    let prog = Program::new(&ml);
-    //println!("{:#?}", prog);    
-    //println!("{}", prog.frame.as_json().unwrap());
-    
-    let mut runnable = Runnable::new(prog);
+    let prog = Program::new(&ml);    
+    let mut runnable = Runnable::new(prog, CompilerType::Native);
     runnable.solve();
 }
 

@@ -247,7 +247,7 @@ impl Compiled for MachineCode {
 
 impl Drop for MachineCode {
     fn drop(&mut self) {
-        fs::remove_file(&self.name);
+        let _ = fs::remove_file(&self.name);
     }
 }
 

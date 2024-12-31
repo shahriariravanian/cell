@@ -5,21 +5,30 @@ mod register;
 mod model;
 mod code;
 mod amd;
+mod interpreter;
 
 use crate::utils::*;
 use crate::model::{CellModel, Program};
-use crate::amd::*;
+use crate::amd::NativeCompiler;
+use crate::interpreter::Interpreter;
 
-pub struct Function {
-    pub prog:           Program,
-    pub compiled:       Box<dyn Compiled>,    
+enum CompilerType {
+    ByteCode,
+    Native,
+    // Wasm,
+}
+
+struct Function {
+    prog:           Program,
+    compiled:       Box<dyn Compiled>,    
 }
 
 impl Function {
-    pub fn new(mut prog: Program) -> Function {
-        // prog.calc_virtual_table();
-        // Function consumes Program
-        let compiled = Box::new(NativeCompiler::new().compile(&prog));
+    pub fn new(mut prog: Program, ty: CompilerType) -> Function {
+        let compiled: Box<dyn Compiled> = match ty { 
+            CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
+            CompilerType::Native =>   Box::new(NativeCompiler::new().compile(&prog)),         
+        };
         
         Function {
             prog,
@@ -75,7 +84,7 @@ pub extern "C" fn compile(p: *const c_char) -> *const CompilerResult  {
     
     let prog = Program::new(&ml);
     res.regs = CString::new(prog.frame.as_json().unwrap()).unwrap();
-    res.func = Some(Function::new(prog));
+    res.func = Some(Function::new(prog, CompilerType::Native));
     res.status = CompilerStatus::Ok;
     return Box::into_raw(Box::new(res)) as *const _
 }

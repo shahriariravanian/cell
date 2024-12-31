@@ -3,6 +3,7 @@ use crate::register::Reg;
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Proc(pub usize);
 
+#[derive(Clone)]
 pub enum Instruction {
     Op{
         op: String, 
