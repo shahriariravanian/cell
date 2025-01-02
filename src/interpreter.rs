@@ -4,52 +4,53 @@ use crate::register::Reg;
 use crate::utils::*;
 
 #[derive(Debug)]
-pub struct Interpreter {
-}
+pub struct Interpreter {}
 
-impl Interpreter {    
+impl Interpreter {
     pub fn new() -> Interpreter {
-        Self {            
-        }
-    }    
+        Self {}
+    }
 }
 
 impl Compiler<ByteCode> for Interpreter {
     fn compile(&mut self, prog: &Program) -> ByteCode {
-        ByteCode::new(prog.code.clone(), prog.virtual_table())
+        ByteCode::new(prog.code.clone(), prog.virtual_table(), prog.frame.mem())
     }
 }
-
 
 #[derive(Debug)]
 pub struct ByteCode {
-    code:   Vec<Instruction>,
-    vt:     Vec<BinaryFunc>,
+    code: Vec<Instruction>,
+    vt: Vec<BinaryFunc>,
+    _mem: Vec<f64>,
 }
 
-impl ByteCode  {
-    fn new(code: Vec<Instruction>, vt: Vec<BinaryFunc>) -> ByteCode {
-        ByteCode {
-            code,
-            vt,
-        }
+impl ByteCode {
+    fn new(code: Vec<Instruction>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> ByteCode {
+        ByteCode { code, vt, _mem }
     }
-    
 }
 
 impl Compiled for ByteCode {
-    fn run(&self, mem: &mut [f64]) {
-        for c in self.code.iter()  {
+    fn run(&mut self) {
+        for c in self.code.iter() {
             match c {
-                Instruction::Num {..} => {},    // Num and Var do not generate any code 
-                Instruction::Var {..} => {},    // They are mainly for debugging
-                Instruction::Op {p, x, y, dst, ..} => { 
-                    mem[dst.0] = self.vt[p.0](mem[x.0], mem[y.0]);
+                Instruction::Num { .. } => {} // Num and Var do not generate any code
+                Instruction::Var { .. } => {} // They are mainly for debugging
+                Instruction::Op { p, x, y, dst, .. } => {
+                    self._mem[dst.0] = self.vt[p.0](self._mem[x.0], self._mem[y.0]);
                 }
             }
         }
     }
+
+    #[inline]
+    fn mem(&self) -> &[f64] {
+        &self._mem[..]
+    }
+
+    #[inline]
+    fn mem_mut(&mut self) -> &mut [f64] {
+        &mut self._mem[..]
+    }
 }
-
-
-

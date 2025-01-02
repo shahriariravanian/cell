@@ -3,52 +3,29 @@ using ModelingToolkit
 using SymbolicUtils
 using CellMLToolkit
 
-const libpath::String = "../target/debug/libcell.so"
+const libpath::String = "../target/release/libcell.so"
 
 mutable struct Compiler
     ref::Ptr{Cvoid}
-    mem::Vector{Float64}
-    regs::Vector{Any}
-    first_state::Int
-    count_states::Int
-    first_param::Int
-    count_params::Int
 end
 
-function compile(sys)
+function compile(sys, ty="native")  # ty is 'native', 'bytecode', or 'wasm'
     model = JSON.json(dictify(sys))
-    ref = ccall((:compile, libpath), Ptr{Cvoid}, (Cstring,), model)
+    ref = ccall((:compile, libpath), Ptr{Cvoid}, (Cstring, Cstring), model, ty)
     status = unsafe_string(
         ccall((:check_status, libpath), Ptr{Cchar}, (Ptr{Cvoid},), ref)
     )
     
     if status != "Success"
         error("compilation error: $status")
-    end
+    end    
     
-    regs = JSON.parse(
-        unsafe_string(
-            ccall((:define_regs, libpath), Ptr{Cchar}, (Ptr{Cvoid},), ref)
-        )
-    )
+    ns = ccall((:count_states, libpath), Cint, (Ptr{Cvoid},), ref)
+    np = ccall((:count_params, libpath), Cint, (Ptr{Cvoid},), ref)
     
-    t = map(x -> x[1]["t"], regs)
-    first_state = findfirst(t .== "State") 
-    count_states = sum(t .== "State") 
-    first_param = findfirst(t .== "Param") 
-    count_params = sum(t .== "Param") 
+    println("number states = $ns, number params = $np")
     
-    mem = map(x -> x[2] == nothing ? 0.0 : x[2], regs)
-    
-    q = return Compiler(
-        ref, 
-        mem,
-        regs,
-        first_state,
-        count_states,
-        first_param,
-        count_params,
-    )
+    q = Compiler(ref)
     
     finalizer(q) do x
         ccall((:finalize, libpath), Cvoid, (Ptr{Cvoid},), x.ref)
@@ -58,11 +35,12 @@ function compile(sys)
 end
 
 function (q::Compiler)(du, u, p, t)
-    q.mem[4] = t
-    q.mem[q.first_state:q.first_state+q.count_states-1] .= u
-    q.mem[q.first_param:q.first_param+q.count_params-1] .= p
-    ccall((:run, libpath), Cvoid, (Ptr{Cvoid},Ptr{Float64},UInt), q.ref, q.mem, length(q.mem))
-    du .= q.mem[q.first_state+q.count_states:q.first_state+2*q.count_states-1]
+    ccall(
+        (:run, libpath), 
+        Cint, 
+        (Ptr{Cvoid},Ptr{Float64},Ptr{Float64},Cint,Ptr{Float64},Cint,Cdouble), 
+        q.ref, du, u, length(u), p, length(p), t
+    )
 end
 
 get_p(ml::CellModel) = [last(v) for v in list_params(ml)]

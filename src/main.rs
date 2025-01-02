@@ -1,121 +1,52 @@
 use std::fs;
-use std::io::{Write, BufWriter};
+use std::io::{BufWriter, Write};
 use std::time::Instant;
 
+mod amd;
+mod code;
+mod interpreter;
+mod model;
+mod register;
+mod runnable;
+mod solvers;
 mod utils;
 mod vector;
-mod register;
-mod model;
-mod code;
-mod solvers;
-mod amd;
-mod interpreter;
+mod wasm;
 
-use crate::utils::*;
 use crate::model::{CellModel, Program};
+use crate::runnable::{CompilerType, Runnable};
 use crate::solvers::*;
-use crate::amd::NativeCompiler;
-use crate::interpreter::Interpreter;
+use crate::utils::*;
 
+use crate::wasm::*;
 
-enum CompilerType {
-    ByteCode,
-    Native,
-    // Wasm,
-}
+fn solve(r: &mut Runnable) {
+    let u0 = r.initial_states();
+    let p = r.params();
+    let alg = Euler::new(0.02, 50);
 
-struct Runnable {
-    pub prog:           Program,
-    pub mem:            Vec<f64>,    
-    pub compiled:       Box<dyn Compiled>,    
-    pub first_state:    usize,
-    pub count_states:   usize,
-    pub first_param:    usize,
-    pub count_params:   usize,   
-    pub u0:             Vec<f64>,     
-}
+    let now = Instant::now();
+    // let alg = Euler::new(0.001, 10);
+    let sol = alg.solve(r, u0, p, 0.0..2000.0);
+    println!("elapsed {:.1?}", now.elapsed());
 
-impl Runnable {
-    pub fn new(mut prog: Program, ty: CompilerType) -> Runnable {        
-        let mem = prog.frame.mem();
-        
-        let compiled: Box<dyn Compiled> = match ty { 
-            CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
-            CompilerType::Native =>   Box::new(NativeCompiler::new().compile(&prog)),         
-        };
-                
-        let first_state = prog.frame.first_state().unwrap();
-        let count_states = prog.frame.count_states();
-        let first_param = prog.frame.first_param().unwrap();
-        let count_params = prog.frame.count_params();
-        
-        let u0 = mem[first_state..first_state+count_states].to_vec();              
+    let fd = fs::File::create("test.dat").expect("cannot open the file");
+    let mut buf = BufWriter::new(fd);
 
-        Runnable {
-            prog,
-            mem,
-            compiled,
-            first_state,
-            count_states,
-            first_param,
-            count_params,
-            u0,
-        }
-    }
-    
-    fn initial_states(&self) -> Vector {
-        Vector(self.u0.clone())
-    }
-    
-    fn params(&self) -> Vector {
-        let p = self.mem[self.first_param..self.first_param+self.count_params].to_vec();
-        Vector(p)
-    }    
-    
-    fn run(&mut self) {        
-        // self.prog.run(&mut self.mem[..], &self.prog.vt[..]);
-        self.compiled.run(&mut self.mem[..]);
-    }
-    
-    fn solve(&mut self) {
-        let u0 = self.initial_states();
-        let alg = Euler::new(0.02, 50);
-        
-        let now = Instant::now();
-        // let alg = Euler::new(0.001, 10);        
-        let sol = alg.solve(self, &u0, 0.0..5000.0);
-        println!("elapsed {:.1?}", now.elapsed());
-        
-        let fd = fs::File::create("test.dat").expect("cannot open the file");
-        let mut buf = BufWriter::new(fd);
-        
-        for row in &sol {    
-            let _ = write!(&mut buf, "{}", row);
-        };
+    for row in &sol {
+        let _ = write!(&mut buf, "{}", row);
     }
 }
-
-impl Callable for Runnable {
-    fn call(&mut self, du: &mut Vector, u: &Vector, t: f64) {
-        self.mem[self.first_state-1] = t;
-        
-        let p = &mut self.mem[self.first_state..self.first_state+self.count_states];
-        p.copy_from_slice(u.as_slice());
-        
-        self.run();        
-        
-        let dp = &self.mem[self.first_state+self.count_states..self.first_state+2*self.count_states];
-        du.as_mut_slice().copy_from_slice(dp);
-    }
-}
-
 
 fn main() {
     // test_codegen();
     let text = fs::read_to_string("julia/test.json").unwrap();
     let ml = CellModel::load(&text).unwrap();
-    let prog = Program::new(&ml);    
-    let mut runnable = Runnable::new(prog, CompilerType::Native);
-    runnable.solve();
-}
+    let prog = Program::new(&ml);
 
+    //let mut wasm = WasmCompiler::new().compile(&prog);
+    //wasm.imports();
+
+    let mut r = Runnable::new(prog, CompilerType::Wasm);
+    solve(&mut r);
+}
