@@ -21,6 +21,7 @@ pub enum Instruction {
         name: String,
         reg: Reg,
     },
+    Nop,
 }
 
 impl std::fmt::Display for Instruction {
@@ -31,6 +32,7 @@ impl std::fmt::Display for Instruction {
             }
             Instruction::Num { val, dst } => write!(f, "r{:<6}= {}", dst.0, val),
             Instruction::Var { name, reg } => write!(f, "r{:<6}:: {}", reg.0, name),
+            Instruction::Nop => write!(f, "nop"),
         }
     }
 }

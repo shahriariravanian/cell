@@ -162,6 +162,7 @@ impl Compiler<MachineCode> for NativeCompiler {
 
         for c in prog.code.iter() {
             match c {
+                Instruction::Nop => {}
                 Instruction::Num { .. } => {} // Num and Var do not generate any code
                 Instruction::Var { .. } => {} // They are mainly for debugging
                 Instruction::Op { p, x, y, dst, op } => {

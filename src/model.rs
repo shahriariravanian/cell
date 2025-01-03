@@ -42,6 +42,7 @@ impl Program {
         };
 
         ml.lower(&mut prog);
+        prog.code.push(Instruction::Nop);
 
         prog
     }
@@ -103,19 +104,6 @@ impl Program {
             return r;
         }
         panic!("cannot find diff by name");
-    }
-
-    // runs the program using a bytecode interpreter
-    pub fn run(&self, mem: &mut Vec<f64>, vt: &Vec<fn(f64, f64) -> f64>) {
-        for c in self.code.iter() {
-            match c {
-                Instruction::Num { .. } => {} // Num and Var do not generate any code
-                Instruction::Var { .. } => {} // They are mainly for debugging
-                Instruction::Op { p, x, y, dst, .. } => {
-                    mem[dst.0] = vt[p.0](mem[x.0], mem[y.0]);
-                }
-            }
-        }
     }
 
     pub fn virtual_table(&self) -> Vec<fn(f64, f64) -> f64> {

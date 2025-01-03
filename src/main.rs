@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io::{BufWriter, Write};
 use std::time::Instant;
@@ -16,9 +17,9 @@ mod wasm;
 use crate::model::{CellModel, Program};
 use crate::runnable::{CompilerType, Runnable};
 use crate::solvers::*;
-use crate::utils::*;
+//use crate::utils::*;
 
-use crate::wasm::*;
+//use crate::wasm::*;
 
 fn solve(r: &mut Runnable) {
     let u0 = r.initial_states();
@@ -27,7 +28,7 @@ fn solve(r: &mut Runnable) {
 
     let now = Instant::now();
     // let alg = Euler::new(0.001, 10);
-    let sol = alg.solve(r, u0, p, 0.0..2000.0);
+    let sol = alg.solve(r, u0, p, 0.0..5000.0);
     println!("elapsed {:.1?}", now.elapsed());
 
     let fd = fs::File::create("test.dat").expect("cannot open the file");
@@ -39,14 +40,30 @@ fn solve(r: &mut Runnable) {
 }
 
 fn main() {
-    // test_codegen();
-    let text = fs::read_to_string("julia/test.json").unwrap();
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < 3 {
+        println!("use: cell [bytecode|native|wasm] model-file.json");
+        std::process::exit(0);
+    }
+
+    let text = fs::read_to_string(args[2].as_str()).unwrap();
     let ml = CellModel::load(&text).unwrap();
     let prog = Program::new(&ml);
 
     //let mut wasm = WasmCompiler::new().compile(&prog);
     //wasm.imports();
 
-    let mut r = Runnable::new(prog, CompilerType::Wasm);
+    let ty = match args[1].as_str() {
+        "bytecode" => CompilerType::ByteCode,
+        "native" => CompilerType::Native,
+        "wasm" => CompilerType::Wasm,
+        _ => {
+            println!("compiler type should be one of bytecode, native, or wasm");
+            std::process::exit(0);
+        }
+    };
+
+    let mut r = Runnable::new(prog, ty);
     solve(&mut r);
 }

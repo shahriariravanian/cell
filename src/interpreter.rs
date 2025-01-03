@@ -1,6 +1,5 @@
 use crate::code::*;
 use crate::model::Program;
-use crate::register::Reg;
 use crate::utils::*;
 
 #[derive(Debug)]
@@ -35,6 +34,7 @@ impl Compiled for ByteCode {
     fn run(&mut self) {
         for c in self.code.iter() {
             match c {
+                Instruction::Nop {} => {}
                 Instruction::Num { .. } => {} // Num and Var do not generate any code
                 Instruction::Var { .. } => {} // They are mainly for debugging
                 Instruction::Op { p, x, y, dst, .. } => {

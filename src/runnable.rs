@@ -1,12 +1,8 @@
-use std::fs;
-use std::io::{BufWriter, Write};
-use std::time::Instant;
+use crate::model::Program;
+use crate::utils::*;
 
 use crate::amd::NativeCompiler;
 use crate::interpreter::Interpreter;
-use crate::model::{CellModel, Program};
-use crate::solvers::*;
-use crate::utils::*;
 use crate::wasm::WasmCompiler;
 
 pub enum CompilerType {
@@ -27,8 +23,8 @@ pub struct Runnable {
 }
 
 impl Runnable {
-    pub fn new(mut prog: Program, ty: CompilerType) -> Runnable {
-        let mut compiled: Box<dyn Compiled> = match ty {
+    pub fn new(prog: Program, ty: CompilerType) -> Runnable {
+        let compiled: Box<dyn Compiled> = match ty {
             CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
             CompilerType::Native => Box::new(NativeCompiler::new().compile(&prog)),
             CompilerType::Wasm => Box::new(WasmCompiler::new().compile(&prog)),
@@ -67,17 +63,19 @@ impl Runnable {
 impl Callable for Runnable {
     fn call(&mut self, du: &mut [f64], u: &[f64], p: &[f64], t: f64) {
         {
-            let mut mem = self.compiled.mem_mut();
+            let mem = self.compiled.mem_mut();
             mem[self.first_state - 1] = t;
-            &mut mem[self.first_state..self.first_state + self.count_states].copy_from_slice(u);
-            &mut mem[self.first_param..self.first_param + self.count_params].copy_from_slice(p);
+            let _ =
+                &mut mem[self.first_state..self.first_state + self.count_states].copy_from_slice(u);
+            let _ =
+                &mut mem[self.first_param..self.first_param + self.count_params].copy_from_slice(p);
         }
 
         self.compiled.run();
 
         {
             let mem = self.compiled.mem();
-            du.copy_from_slice(
+            let _ = du.copy_from_slice(
                 &mem[self.first_state + self.count_states
                     ..self.first_state + 2 * self.count_states],
             );

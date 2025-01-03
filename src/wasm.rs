@@ -6,14 +6,31 @@ use std::fmt::Write;
 
 use crate::code::*;
 use crate::model::Program;
-use crate::register::Reg;
+use crate::register::{Reg, RegType};
 use crate::utils::*;
+
+#[derive(Debug, Copy, Clone)]
+enum ArgType {
+    F64,
+    I32,
+}
 
 #[derive(Debug)]
 enum OpType {
-    None, // not implemented yet!
-    Unary(&'static str),
-    Binary(&'static str),
+    Nop(ArgType), // not implemented yet!
+    Unary(&'static str, ArgType, ArgType),
+    Binary(&'static str, ArgType, ArgType, ArgType),
+    Ternary(&'static str, ArgType, ArgType, ArgType, ArgType),
+}
+
+#[derive(Debug, Clone)]
+struct Op {
+    op: String,
+    x: Option<Reg>,
+    y: Option<Reg>,
+    z: Option<Reg>,
+    dst: Option<Reg>,
+    store: bool,
 }
 
 #[derive(Debug)]
@@ -31,7 +48,7 @@ impl WasmCompiler {
     }
 
     fn push(&mut self, s: &str) {
-        for i in 0..4 * self.lev {
+        for _ in 0..4 * self.lev {
             let _ = write!(self.buf, " ");
         }
         let _ = writeln!(self.buf, "{}", s);
@@ -44,38 +61,46 @@ impl WasmCompiler {
 
     fn op_code(&mut self, op: &str) -> OpType {
         match op {
-            "mov" => OpType::Unary("f64.add"),
-            "plus" => OpType::Binary("f64.add"),
-            "minus" => OpType::Binary("f64.sub"),
-            "neg" => OpType::Unary("f64.neg"),
-            "times" => OpType::Binary("f64.mul"),
-            "divide" => OpType::Binary("f64.div"),
-            "rem" => OpType::Binary("call $rem"),
-            "power" => OpType::Binary("call $power"),
-            "gt" => OpType::Binary("call $gt"),
-            "geq" => OpType::Binary("call $geq"),
-            "lt" => OpType::Binary("call $lt"),
-            "leq" => OpType::Binary("call $leq"),
-            "eq" => OpType::Binary("call $eq"),
-            "neq" => OpType::Binary("call $neq"),
-            "and" => OpType::Binary("call $and"),
-            "or" => OpType::Binary("call $or"),
-            "xor" => OpType::Binary("call $xor"),
-            "if_pos" => OpType::Binary("call $if_pos"),
-            "if_neg" => OpType::Binary("call $if_neg"),
-            "sin" => OpType::Unary("call $sin"),
-            "cos" => OpType::Unary("call $cos"),
-            "tan" => OpType::Unary("call $tan"),
-            "csc" => OpType::Unary("call $csc"),
-            "sec" => OpType::Unary("call $sec"),
-            "cot" => OpType::Unary("call $cot"),
-            "arcsin" => OpType::Unary("call $asin"),
-            "arccos" => OpType::Unary("call $acos"),
-            "arctan" => OpType::Unary("call $atan"),
-            "exp" => OpType::Unary("call $exp"),
-            "ln" => OpType::Unary("call $ln"),
-            "log" => OpType::Unary("call $log"),
-            "root" => OpType::Unary("f64.sqrt"),
+            "mov" => OpType::Nop(ArgType::F64),
+            "neg" => OpType::Unary("f64.negate", ArgType::F64, ArgType::F64),
+            "sin" => OpType::Unary("call $sin", ArgType::F64, ArgType::F64),
+            "cos" => OpType::Unary("call $cos", ArgType::F64, ArgType::F64),
+            "tan" => OpType::Unary("call $tan", ArgType::F64, ArgType::F64),
+            "csc" => OpType::Unary("call $csc", ArgType::F64, ArgType::F64),
+            "sec" => OpType::Unary("call $sec", ArgType::F64, ArgType::F64),
+            "cot" => OpType::Unary("call $cot", ArgType::F64, ArgType::F64),
+            "arcsin" => OpType::Unary("call $asin", ArgType::F64, ArgType::F64),
+            "arccos" => OpType::Unary("call $acos", ArgType::F64, ArgType::F64),
+            "arctan" => OpType::Unary("call $atan", ArgType::F64, ArgType::F64),
+            "exp" => OpType::Unary("call $exp", ArgType::F64, ArgType::F64),
+            "ln" => OpType::Unary("call $ln", ArgType::F64, ArgType::F64),
+            "log" => OpType::Unary("call $log", ArgType::F64, ArgType::F64),
+            "root" => OpType::Unary("f64.sqrt", ArgType::F64, ArgType::F64),
+
+            "plus" => OpType::Binary("f64.add", ArgType::F64, ArgType::F64, ArgType::F64),
+            "minus" => OpType::Binary("f64.sub", ArgType::F64, ArgType::F64, ArgType::F64),
+            "times" => OpType::Binary("f64.mul", ArgType::F64, ArgType::F64, ArgType::F64),
+            "divide" => OpType::Binary("f64.div", ArgType::F64, ArgType::F64, ArgType::F64),
+            "rem" => OpType::Binary("call $rem", ArgType::F64, ArgType::F64, ArgType::F64),
+            "power" => OpType::Binary("call $power", ArgType::F64, ArgType::F64, ArgType::F64),
+            "gt" => OpType::Binary("f64.gt", ArgType::I32, ArgType::F64, ArgType::F64),
+            "geq" => OpType::Binary("f64.ge", ArgType::I32, ArgType::F64, ArgType::F64),
+            "lt" => OpType::Binary("f64.lt", ArgType::I32, ArgType::F64, ArgType::F64),
+            "leq" => OpType::Binary("f64.le", ArgType::I32, ArgType::F64, ArgType::F64),
+            "eq" => OpType::Binary("f64.eq", ArgType::I32, ArgType::F64, ArgType::F64),
+            "neq" => OpType::Binary("f64.ne", ArgType::I32, ArgType::F64, ArgType::F64),
+            "and" => OpType::Binary("i32.and", ArgType::I32, ArgType::I32, ArgType::I32),
+            "or" => OpType::Binary("i32.or", ArgType::I32, ArgType::I32, ArgType::I32),
+            "xor" => OpType::Binary("i32.xor", ArgType::I32, ArgType::I32, ArgType::I32),
+            //"if_pos" => OpType::Binary("call $if_pos", ArgType::F64, ArgType::I32, ArgType::F64),
+            //"if_neg" => OpType::Binary("call $if_neg", ArgType::F64, ArgType::I32, ArgType::F64),
+            "select" => OpType::Ternary(
+                "select",
+                ArgType::F64,
+                ArgType::F64,
+                ArgType::F64,
+                ArgType::I32,
+            ),
             _ => {
                 let msg = format!("op_code {} not found", op);
                 panic!("{}", msg);
@@ -84,17 +109,94 @@ impl WasmCompiler {
     }
 
     fn imports(&mut self) {
+        // unary
         for s in [
             "sin", "cos", "tan", "csc", "sec", "cot", "asin", "acos", "atan", "exp", "ln", "log",
-            "rem", "power", "gt", "geq", "lt", "leq", "eq", "neq", "or", "and", "xor", "if_pos",
-            "if_neg", "root", "neg",
         ] {
+            let cmd = format!(
+                "(import \"code\" \"{}\" (func ${} (param f64)(result f64)))",
+                s, s
+            );
+            self.push(cmd.as_str());
+        }
+
+        // binary
+        for s in ["rem", "power"] {
             let cmd = format!(
                 "(import \"code\" \"{}\" (func ${} (param f64)(param f64)(result f64)))",
                 s, s
             );
             self.push(cmd.as_str());
         }
+    }
+
+    fn reg_load(&mut self, prog: &Program, r: Option<Reg>, ty: ArgType) {
+        if let Some(r) = r {
+            let (t, val) = prog.frame.regs[r.0].clone();
+
+            let p = match ty {
+                ArgType::F64 => "f64",
+                ArgType::I32 => "i32",
+            };
+
+            let s = match t {
+                RegType::Const => {
+                    format!("{}.const {}", p, val.unwrap_or(0.0))
+                }
+                _ => {
+                    format!("({}.load (i32.const {}))", p, 8 * r.0)
+                }
+            };
+
+            self.push(s.as_str());
+        }
+    }
+
+    fn filter_code(&self, prog: &Program) -> Vec<Op> {
+        let mut code: Vec<Op> = Vec::new();
+
+        for c in prog.code.iter() {
+            if let Instruction::Op { x, y, dst, op, .. } = c {
+                if op == "if_pos" || op == "if_neg" {
+                    code.push(Op {
+                        x: if op == "if_pos" {
+                            Some(*y)
+                        } else {
+                            Some(Reg(0))
+                        },
+                        y: if op == "if_neg" {
+                            Some(*y)
+                        } else {
+                            Some(Reg(0))
+                        },
+                        z: Some(*x),
+                        dst: Some(*dst),
+                        op: (if *y == Reg(0) { "mov" } else { "select" }).to_string(),
+                        store: true,
+                    });
+                } else {
+                    code.push(Op {
+                        x: Some(*x),
+                        y: Some(*y),
+                        z: None,
+                        dst: Some(*dst),
+                        op: op.clone(),
+                        store: true,
+                    });
+                }
+            }
+        }
+
+        for i in 0..code.len() - 1 {
+            if code[i].dst == code[i + 1].x && code[i].x.is_some() {
+                code[i].dst = code[i + 1].dst;
+                code[i].store = false;
+                code[i + 1].x = None;
+                code[i + 1].dst = None;
+            }
+        }
+
+        code
     }
 }
 
@@ -107,25 +209,51 @@ impl Compiler<WasmCode> for WasmCompiler {
 
         self.push("(func $run");
 
-        for c in prog.code.iter() {
-            match c {
-                Instruction::Num { .. } => {} // Num and Var do not generate any code
-                Instruction::Var { .. } => {} // They are mainly for debugging
-                Instruction::Op { x, y, dst, op, .. } => {
-                    let s = match self.op_code(op) {
-                        OpType::Unary(s) => {
-                            format!("(f64.store (i32.const {}) ({} (f64.load (i32.const {})) (f64.const 0)))", 
-                                    8*dst.0, s, 8*x.0)
-                        }
-                        OpType::Binary(s) => {                            
-                            format!("(f64.store (i32.const {}) ({} (f64.load (i32.const {})) (f64.load (i32.const {}))))", 
-                                    8*dst.0, s, 8*x.0, 8*y.0)
-                        }
-                        OpType::None => {
-                            panic!("unknown op code")
-                        }
-                    };
-                    self.push(s.as_str());
+        let code = self.filter_code(prog);
+
+        for c in code.iter() {
+            let Op {
+                x,
+                y,
+                z,
+                dst,
+                op,
+                store,
+            } = c;
+
+            if let Some(dst) = dst {
+                self.push(format!("i32.const {}", 8 * dst.0).as_str());
+            }
+
+            let dst_t = match self.op_code(op) {
+                OpType::Unary(s, dst_t, x_t) => {
+                    self.reg_load(prog, *x, x_t);
+                    self.push(s);
+                    dst_t
+                }
+                OpType::Binary(s, dst_t, x_t, y_t) => {
+                    self.reg_load(prog, *x, x_t);
+                    self.reg_load(prog, *y, y_t);
+                    self.push(s);
+                    dst_t
+                }
+                OpType::Ternary(s, dst_t, x_t, y_t, z_t) => {
+                    self.reg_load(prog, *x, x_t);
+                    self.reg_load(prog, *y, y_t);
+                    self.reg_load(prog, *z, z_t);
+                    self.push(s);
+                    dst_t
+                }
+                OpType::Nop(dst_t) => {
+                    self.reg_load(prog, *x, dst_t);
+                    dst_t
+                }
+            };
+
+            if *store {
+                match dst_t {
+                    ArgType::F64 => self.push("f64.store"),
+                    ArgType::I32 => self.push("i32.store"),
                 }
             }
         }
@@ -163,7 +291,7 @@ impl WasmCode {
         let mut store = Store::new(&engine, 0);
         let mut linker = <Linker<HostState>>::new(&engine);
 
-        Self::imports(&mut store, &mut linker);
+        Self::imports(&mut store, &mut linker).expect("error in importing functions to wasm");
 
         let instance = linker.instantiate(&mut store, &module)?.start(&mut store)?;
 
@@ -176,7 +304,7 @@ impl WasmCode {
 
         p.copy_from_slice(&_mem[..]);
 
-        let mut wasm = WasmCode {
+        let wasm = WasmCode {
             _mem,
             wat,
             engine,
@@ -197,7 +325,7 @@ impl WasmCode {
             "sin",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.sin() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.sin() },
             ),
         )?;
 
@@ -206,7 +334,7 @@ impl WasmCode {
             "cos",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.cos() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.cos() },
             ),
         )?;
 
@@ -215,7 +343,7 @@ impl WasmCode {
             "tan",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.tan() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.tan() },
             ),
         )?;
 
@@ -224,7 +352,7 @@ impl WasmCode {
             "csc",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { 1.0 / x.sin() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { 1.0 / x.sin() },
             ),
         )?;
 
@@ -233,7 +361,7 @@ impl WasmCode {
             "sec",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { 1.0 / x.cos() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { 1.0 / x.cos() },
             ),
         )?;
 
@@ -242,7 +370,7 @@ impl WasmCode {
             "cot",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { 1.0 / x.tan() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { 1.0 / x.tan() },
             ),
         )?;
 
@@ -251,7 +379,7 @@ impl WasmCode {
             "asin",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.asin() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.asin() },
             ),
         )?;
 
@@ -260,7 +388,7 @@ impl WasmCode {
             "acos",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.acos() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.acos() },
             ),
         )?;
 
@@ -269,7 +397,7 @@ impl WasmCode {
             "atan",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.atan() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.atan() },
             ),
         )?;
 
@@ -278,7 +406,7 @@ impl WasmCode {
             "exp",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.exp() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.exp() },
             ),
         )?;
 
@@ -287,7 +415,7 @@ impl WasmCode {
             "ln",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.ln() }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.ln() },
             ),
         )?;
 
@@ -296,7 +424,7 @@ impl WasmCode {
             "log",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.log(10.0) }),
+                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.log(10.0) },
             ),
         )?;
 
@@ -305,7 +433,7 @@ impl WasmCode {
             "rem",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 { x % y }),
+                |_caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 { x % y },
             ),
         )?;
 
@@ -314,190 +442,7 @@ impl WasmCode {
             "power",
             Func::wrap(
                 &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 { x.powf(y) }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "gt",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x > y {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "geq",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x >= y {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "lt",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x < y {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "leq",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x <= y {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "eq",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x == y {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "neq",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x != y {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "and",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x > 0.0 && y > 0.0 {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "or",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x > 0.0 || y > 0.0 {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "xor",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x * y < 0.0 {
-                        1.0
-                    } else {
-                        -1.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "if_pos",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {                    
-                    if x > 0.0 {
-                        y
-                    } else {
-                        0.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "if_neg",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 {
-                    if x < 0.0 {
-                        y
-                    } else {
-                        0.0
-                    }
-                }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "root",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { x.sqrt() }),
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "neg",
-            Func::wrap(
-                &mut *store,
-                (|caller: Caller<'_, HostState>, x: f64, _y: f64| -> f64 { -x }),
+                |_caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 { x.powf(y) },
             ),
         )?;
 

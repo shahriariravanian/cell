@@ -12,11 +12,8 @@ mod vector;
 mod wasm;
 
 use crate::model::{CellModel, Program};
-use crate::utils::*;
-//use crate::solvers::*;
-use crate::amd::NativeCompiler;
-use crate::interpreter::Interpreter;
 use crate::runnable::{CompilerType, Runnable};
+use crate::utils::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CompilerStatus {
@@ -70,7 +67,7 @@ pub extern "C" fn compile(p: *const c_char, ty: *const c_char) -> *const Compile
     };
 
     let prog = Program::new(&ml);
-    
+
     // println!("{:#?}", &prog);
 
     res.func = match ty {
