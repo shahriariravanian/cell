@@ -53,8 +53,7 @@ impl Program {
         self.code.push(s)
     }
 
-    // pushes an Op into code and adjusts the virtual table accordingly
-    pub fn push_op(&mut self, op: &str, x: Reg, y: Reg, dst: Reg) {
+    fn proc(&mut self, op: &str) -> Proc {
         let p = match self.ft.iter().position(|s| s == op) {
             Some(p) => p,
             None => {
@@ -62,13 +61,35 @@ impl Program {
                 self.ft.len() - 1
             }
         };
-        self.code.push(Instruction::Op {
+        Proc(p)
+    }
+
+    // pushes an Op into code and adjusts the virtual table accordingly
+    pub fn push_unary(&mut self, op: &str, x: Reg, dst: Reg) {
+        let p = self.proc(op);
+
+        self.code.push(Instruction::Unary {
+            op: op.to_string(),
+            x,
+            dst,
+            p,
+        })
+    }
+
+    pub fn push_binary(&mut self, op: &str, x: Reg, y: Reg, dst: Reg) {
+        let p = self.proc(op);
+
+        self.code.push(Instruction::Binary {
             op: op.to_string(),
             x,
             y,
             dst,
-            p: Proc(p),
+            p,
         })
+    }
+
+    pub fn push_ifelse(&mut self, x: Reg, y: Reg, z: Reg, dst: Reg) {
+        self.code.push(Instruction::IfElse { x, y, z, dst })
     }
 
     // allocates a constant register
@@ -158,9 +179,8 @@ impl Expr {
 
     fn lower_unary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
         let x = args[0].lower(prog);
-        let y = Reg(0);
         let dst = prog.alloc_temp();
-        prog.push_op(op, x, y, dst);
+        prog.push_unary(op, x, dst);
         prog.free(x);
         dst
     }
@@ -169,7 +189,7 @@ impl Expr {
         let x = args[0].lower(prog);
         let y = args[1].lower(prog);
         let dst = prog.alloc_temp();
-        prog.push_op(op, x, y, dst);
+        prog.push_binary(op, x, y, dst);
         prog.free(x);
         prog.free(y);
         dst
@@ -183,19 +203,21 @@ impl Expr {
         let x = args[0].lower(prog);
         let y1 = args[1].lower(prog);
         let y2 = args[2].lower(prog);
-        let t1 = prog.alloc_temp();
-        let t2 = prog.alloc_temp();
+        // let t1 = prog.alloc_temp();
+        // let t2 = prog.alloc_temp();
         let dst = prog.alloc_temp();
 
-        prog.push_op("if_pos", x, y1, t1);
-        prog.push_op("if_neg", x, y2, t2);
-        prog.push_op("plus", t1, t2, dst);
+        prog.push_ifelse(x, y1, y2, dst);
+
+        //prog.push_op("if_pos", x, y1, t1);
+        //prog.push_op("if_neg", x, y2, t2);
+        //prog.push_op("plus", t1, t2, dst);
 
         prog.free(x);
         prog.free(y1);
         prog.free(y2);
-        prog.free(t1);
-        prog.free(t2);
+        // prog.free(t1);
+        // prog.free(t2);
 
         dst
     }
@@ -209,7 +231,7 @@ impl Expr {
         for i in 1..args.len() {
             let y = args[i].lower(prog);
             let dst = prog.alloc_temp();
-            prog.push_op(op, x, y, dst);
+            prog.push_binary(op, x, y, dst);
             prog.free(x);
             x = dst;
         }
@@ -277,7 +299,7 @@ impl Lower for Equation {
             panic!("undefined diff variable");
         };
 
-        prog.push_op("mov", src, Reg(0), dst);
+        prog.push_unary("mov", src, dst);
         Reg(0)
     }
 }

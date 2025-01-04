@@ -5,13 +5,24 @@ pub struct Proc(pub usize);
 
 #[derive(Clone)]
 pub enum Instruction {
-    Op {
+    Unary {
+        op: String,
+        x: Reg,
+        dst: Reg,
+        p: Proc,
+    },
+    Binary {
         op: String,
         x: Reg,
         y: Reg,
         dst: Reg,
-        // f: fn (f64, f64) -> f64,
         p: Proc,
+    },
+    IfElse {
+        x: Reg,
+        y: Reg,
+        z: Reg,
+        dst: Reg,
     },
     Num {
         val: f64,
@@ -22,17 +33,31 @@ pub enum Instruction {
         reg: Reg,
     },
     Nop,
+    Op {
+        op: String,
+        x: Reg,
+        y: Reg,
+        dst: Reg,
+        p: Proc,
+    },
 }
 
 impl std::fmt::Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Instruction::Op { op, x, y, dst, .. } => {
+            Instruction::Unary { op, x, dst, .. } => {
+                write!(f, "r{:<6}← {}(r{})", dst.0, op, x.0)
+            }
+            Instruction::Binary { op, x, y, dst, .. } => {
                 write!(f, "r{:<6}← r{} {} r{}", dst.0, x.0, op, y.0)
+            }
+            Instruction::IfElse { x, y, z, dst } => {
+                write!(f, "r{:<6}← r{} ? r{} : r{}", dst.0, x.0, y.0, z.0)
             }
             Instruction::Num { val, dst } => write!(f, "r{:<6}= {}", dst.0, val),
             Instruction::Var { name, reg } => write!(f, "r{:<6}:: {}", reg.0, name),
             Instruction::Nop => write!(f, "nop"),
+            Instruction::Op { .. } => write!(f, "error!"),
         }
     }
 }
@@ -50,6 +75,7 @@ pub struct Code {}
 impl Code {
     pub fn from_str(op: &str) -> BinaryFunc {
         match op {
+            "nop" => Code::nop,
             "mov" => Code::mov,
             "plus" => Code::plus,
             "minus" => Code::minus,
@@ -82,11 +108,16 @@ impl Code {
             "ln" => Code::ln,
             "log" => Code::log,
             "root" => Code::root,
+            "ifelse" => Code::nop,
             _ => {
                 let msg = format!("op_code {} not found", op);
                 panic!("{}", msg)
             }
         }
+    }
+
+    pub fn nop(_x: f64, _y: f64) -> f64 {
+        0.0
     }
 
     pub fn mov(x: f64, _y: f64) -> f64 {

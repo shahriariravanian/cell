@@ -1,8 +1,8 @@
 use memmap2::{Mmap, MmapOptions};
 use rand::distributions::{Alphanumeric, DistString};
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
-use std::collections::HashSet;
 
 use crate::code::*;
 use crate::model::Program;
@@ -65,6 +65,17 @@ impl NativeCompiler {
         self.buf.push(0xeb); // JMP
         self.buf.push(0x05); // jump 5 bytes
         self.load_xmm(Self::XMM0, Self::RBP, 8); // Reg(1) = 1
+    }
+
+    fn ifelse(&mut self) {
+        self.buf.extend_from_slice(&[0x66, 0x0f, 0x50, 0xc0]); //      movmskpd eax, xmm0
+        self.buf.extend_from_slice(&[0x83, 0xe0, 0x01]); //      and eax, 1
+        self.buf.extend_from_slice(&[0x75, 0x06]); //      jnz _neg
+        self.move_xmm(Self::XMM0, Self::XMM1); //      move xmm0, xmm1
+        self.buf.extend_from_slice(&[0xeb, 0x04]); //      jmp _done
+                                                   // neg:
+        self.move_xmm(Self::XMM0, Self::XMM2); //      move xmm0, xmm2
+                                               // done:
     }
 
     fn push_reg(&mut self, r: u8) {
@@ -149,26 +160,45 @@ impl NativeCompiler {
         self.buf.push(0x11);
         self.modrm_mem(r, base, offset);
     }
-    
-    fn is_unary(op: &str) -> bool {
-        const unary: [&str; 15] = ["mov", "neg", "sin", "cos", "tan", "csc", "sec", "cot", 
-                       "arcsin", "arccos", "arctan", "exp", "ln", "log", "root"];
-        unary.contains(&op)
-    }
-    
+
     fn find_saveables(&self, prog: &Program) -> HashSet<Reg> {
         let mut saveables: HashSet<Reg> = HashSet::new();
-        
+
         let mut r = Reg(0);
-        
+
         for c in prog.code.iter() {
-            if let Instruction::Op { p, x, y, dst, op } = c {
-                if *x != r { saveables.insert(*x); }
-                if *y != r { saveables.insert(*y); }
-                r = *dst;                
+            match c {
+                Instruction::Unary { x, dst, .. } => {
+                    if *x != r {
+                        saveables.insert(*x);
+                    }
+                    r = *dst;
+                }
+                Instruction::Binary { x, y, dst, .. } => {
+                    if *x != r {
+                        saveables.insert(*x);
+                    }
+                    if *y != r {
+                        saveables.insert(*y);
+                    }
+                    r = *dst;
+                }
+                Instruction::IfElse { x, y, z, dst } => {
+                    if *x != r {
+                        saveables.insert(*x);
+                    }
+                    if *y != r {
+                        saveables.insert(*y);
+                    }
+                    if *z != r {
+                        saveables.insert(*z);
+                    }
+                    r = *dst;
+                }
+                _ => {}
             }
-        };
-        
+        }
+
         saveables
     }
 }
@@ -184,43 +214,59 @@ impl Compiler<MachineCode> for NativeCompiler {
 
         let mut r = Reg(0);
         let saveables = self.find_saveables(prog);
-        
+
         for c in prog.code.iter() {
-            if let Instruction::Op { p, x, y, dst, op } = c {                
-                /*
-                    // non-optimized base code
-                    self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
-                    self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
-                    self.op_code(&op, *p);
-                    self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
-                */
-                    
-                if NativeCompiler::is_unary(op) {                    
+            match c {
+                Instruction::Unary { p, x, dst, op } => {
                     if r != *x {
                         self.load_xmm_reg(Self::XMM0, *x);
-                    }                        
-                } else {
-                    if r == *x {
-                        self.load_xmm_reg(Self::XMM1, *y);
-                    } else if r == *y {
-                        self.move_xmm(Self::XMM1, Self::XMM0);
-                        self.load_xmm_reg(Self::XMM0, *x);
-                    } else {
-                        self.load_xmm_reg(Self::XMM0, *x);
-                        self.load_xmm_reg(Self::XMM1, *y);
-                    }                        
-                }                                       
-
-                self.op_code(&op, *p);
-                    
-                // only save the result if it is part of the function output (is_diff)
-                // or is needed by instructions after the immediate next one
-                if prog.frame.is_diff(dst) || saveables.contains(dst) {
-                    self.save_xmm_reg(Self::XMM0, *dst);
+                    };
+                    self.op_code(&op, *p);
+                    r = *dst;
                 }
-                r = *dst;
-           }
-        }        
+                Instruction::Binary { p, x, y, dst, op } => {
+                    if *y == r {
+                        self.move_xmm(Self::XMM1, Self::XMM0);
+                    } else {
+                        self.load_xmm_reg(Self::XMM1, *y);
+                    }
+
+                    if *x != r {
+                        self.load_xmm_reg(Self::XMM0, *x);
+                    }
+
+                    self.op_code(&op, *p);
+                    r = *dst;
+                }
+                Instruction::IfElse { x, y, z, dst } => {
+                    if *y == r {
+                        self.move_xmm(Self::XMM1, Self::XMM0);
+                    } else {
+                        self.load_xmm_reg(Self::XMM1, *y);
+                    }
+
+                    if *z == r {
+                        self.move_xmm(Self::XMM2, Self::XMM0);
+                    } else {
+                        self.load_xmm_reg(Self::XMM2, *z);
+                    }
+
+                    if *x != r {
+                        self.load_xmm_reg(Self::XMM0, *x);
+                    }
+
+                    self.ifelse();
+                    r = *dst;
+                }
+                _ => {}
+            }
+
+            // only save the result if it is part of the function output (is_diff)
+            // or is needed by instructions after the immediate next one
+            if prog.frame.is_diff(&r) || saveables.contains(&r) {
+                self.save_xmm_reg(Self::XMM0, r);
+            }
+        }
 
         // function closing instructions
         self.pop_reg(Self::RBX); // pop    rbx

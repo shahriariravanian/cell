@@ -156,25 +156,18 @@ impl WasmCompiler {
         let mut code: Vec<Op> = Vec::new();
 
         for c in prog.code.iter() {
-            if let Instruction::Op { x, y, dst, op, .. } = c {
-                if op == "if_pos" || op == "if_neg" {
+            match c {
+                Instruction::Unary { op, x, dst, .. } => {
                     code.push(Op {
-                        x: if op == "if_pos" {
-                            Some(*y)
-                        } else {
-                            Some(Reg(0))
-                        },
-                        y: if op == "if_neg" {
-                            Some(*y)
-                        } else {
-                            Some(Reg(0))
-                        },
-                        z: Some(*x),
+                        x: Some(*x),
+                        y: None,
+                        z: None,
                         dst: Some(*dst),
-                        op: (if *y == Reg(0) { "mov" } else { "select" }).to_string(),
+                        op: op.clone(),
                         store: true,
                     });
-                } else {
+                }
+                Instruction::Binary { op, x, y, dst, .. } => {
                     code.push(Op {
                         x: Some(*x),
                         y: Some(*y),
@@ -184,6 +177,17 @@ impl WasmCompiler {
                         store: true,
                     });
                 }
+                Instruction::IfElse { x, y, z, dst } => {
+                    code.push(Op {
+                        x: Some(*y),
+                        y: Some(*z),
+                        z: Some(*x),
+                        dst: Some(*dst),
+                        op: "select".to_string(),
+                        store: true,
+                    });
+                }
+                _ => {}
             }
         }
 

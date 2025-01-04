@@ -34,12 +34,20 @@ impl Compiled for ByteCode {
     fn run(&mut self) {
         for c in self.code.iter() {
             match c {
-                Instruction::Nop {} => {}
-                Instruction::Num { .. } => {} // Num and Var do not generate any code
-                Instruction::Var { .. } => {} // They are mainly for debugging
-                Instruction::Op { p, x, y, dst, .. } => {
+                Instruction::Unary { p, x, dst, .. } => {
+                    self._mem[dst.0] = self.vt[p.0](self._mem[x.0], 0.0);
+                }
+                Instruction::Binary { p, x, y, dst, .. } => {
                     self._mem[dst.0] = self.vt[p.0](self._mem[x.0], self._mem[y.0]);
                 }
+                Instruction::IfElse { x, y, z, dst } => {
+                    self._mem[dst.0] = if self._mem[x.0] > 0.0 {
+                        self._mem[y.0]
+                    } else {
+                        self._mem[z.0]
+                    }
+                }
+                _ => {}
             }
         }
     }
