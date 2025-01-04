@@ -2,6 +2,7 @@ use memmap2::{Mmap, MmapOptions};
 use rand::distributions::{Alphanumeric, DistString};
 use std::fs;
 use std::io::Write;
+use std::collections::HashSet;
 
 use crate::code::*;
 use crate::model::Program;
@@ -148,10 +149,33 @@ impl NativeCompiler {
         self.buf.push(0x11);
         self.modrm_mem(r, base, offset);
     }
+    
+    fn is_unary(op: &str) -> bool {
+        const unary: [&str; 15] = ["mov", "neg", "sin", "cos", "tan", "csc", "sec", "cot", 
+                       "arcsin", "arccos", "arctan", "exp", "ln", "log", "root"];
+        unary.contains(&op)
+    }
+    
+    fn find_saveables(&self, prog: &Program) -> HashSet<Reg> {
+        let mut saveables: HashSet<Reg> = HashSet::new();
+        
+        let mut r = Reg(0);
+        
+        for c in prog.code.iter() {
+            if let Instruction::Op { p, x, y, dst, op } = c {
+                if *x != r { saveables.insert(*x); }
+                if *y != r { saveables.insert(*y); }
+                r = *dst;                
+            }
+        };
+        
+        saveables
+    }
 }
 
 impl Compiler<MachineCode> for NativeCompiler {
     fn compile(&mut self, prog: &Program) -> MachineCode {
+        // function prelude
         self.push_reg(Self::RBP); // push   rbp
         self.push_reg(Self::RBX); // push   rbx
 
@@ -159,44 +183,46 @@ impl Compiler<MachineCode> for NativeCompiler {
         self.move_reg(Self::RBX, Self::RDX); // mov    rbx,rdx
 
         let mut r = Reg(0);
-
+        let saveables = self.find_saveables(prog);
+        
         for c in prog.code.iter() {
-            match c {
-                Instruction::Nop => {}
-                Instruction::Num { .. } => {} // Num and Var do not generate any code
-                Instruction::Var { .. } => {} // They are mainly for debugging
-                Instruction::Op { p, x, y, dst, op } => {
-                    /*
-                        self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
-                        self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
-                        self.op_code(&op, *p);
-                        self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
-                    */
-                    if op == "mov" {
-                        if r != *x {
-                            self.save_xmm_reg(Self::XMM0, r);
-                            self.load_xmm_reg(Self::XMM0, *x);
-                        }
+            if let Instruction::Op { p, x, y, dst, op } = c {                
+                /*
+                    // non-optimized base code
+                    self.load_xmm(Self::XMM0, Self::RBP, 8*x.0);    // movsd  xmm0,QWORD PTR [rbp+8*x]
+                    self.load_xmm(Self::XMM1, Self::RBP, 8*y.0);    // movsd  xmm1,QWORD PTR [rbp+8*y]
+                    self.op_code(&op, *p);
+                    self.save_xmm(Self::XMM0, Self::RBP, 8*dst.0);  // movsd  QWORD PTR [rbp+8*dst],xmm0
+                */
+                    
+                if NativeCompiler::is_unary(op) {                    
+                    if r != *x {
+                        self.load_xmm_reg(Self::XMM0, *x);
+                    }                        
+                } else {
+                    if r == *x {
+                        self.load_xmm_reg(Self::XMM1, *y);
+                    } else if r == *y {
+                        self.move_xmm(Self::XMM1, Self::XMM0);
+                        self.load_xmm_reg(Self::XMM0, *x);
                     } else {
-                        if r == *x {
-                            self.load_xmm_reg(Self::XMM1, *y);
-                        } else if r == *y {
-                            self.move_xmm(Self::XMM1, Self::XMM0);
-                            self.load_xmm_reg(Self::XMM0, *x);
-                        } else {
-                            self.save_xmm_reg(Self::XMM0, r);
-                            self.load_xmm_reg(Self::XMM0, *x);
-                            self.load_xmm_reg(Self::XMM1, *y);
-                        }
-                        self.op_code(&op, *p);
-                    }
-                    r = *dst;
+                        self.load_xmm_reg(Self::XMM0, *x);
+                        self.load_xmm_reg(Self::XMM1, *y);
+                    }                        
+                }                                       
+
+                self.op_code(&op, *p);
+                    
+                // only save the result if it is part of the function output (is_diff)
+                // or is needed by instructions after the immediate next one
+                if prog.frame.is_diff(dst) || saveables.contains(dst) {
+                    self.save_xmm_reg(Self::XMM0, *dst);
                 }
-            }
-        }
+                r = *dst;
+           }
+        }        
 
-        self.save_xmm_reg(Self::XMM0, r);
-
+        // function closing instructions
         self.pop_reg(Self::RBX); // pop    rbx
         self.pop_reg(Self::RBP); // pop    rbp
         self.ret(); // ret

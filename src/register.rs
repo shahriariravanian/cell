@@ -76,8 +76,16 @@ impl Frame {
         };
     }
 
-    pub fn value(&self, r: Reg) -> Option<f64> {
+    pub fn value(&self, r: &Reg) -> Option<f64> {
         self.regs[r.0].1
+    }
+    
+    pub fn is_diff(&self, r: &Reg) -> bool {
+        if let (RegType::Diff(_), _) = self.regs[r.0] {
+            true
+        } else {
+            false
+        }
     }
 
     pub fn find(&self, t: &RegType) -> Option<Reg> {

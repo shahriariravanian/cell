@@ -24,7 +24,7 @@ use crate::solvers::*;
 fn solve(r: &mut Runnable) {
     let u0 = r.initial_states();
     let p = r.params();
-    let alg = Euler::new(0.02, 50);
+    let alg = Euler::new(0.01, 50);
 
     let now = Instant::now();
     // let alg = Euler::new(0.001, 10);
