@@ -189,7 +189,15 @@ impl Expr {
         let x = args[0].lower(prog);
         let y = args[1].lower(prog);
         let dst = prog.alloc_temp();
-        prog.push_binary(op, x, y, dst);
+
+        if op == "times" && x == Reg(2) {
+            prog.push_unary("neg", y, dst);
+        } else if op == "times" && y == Reg(2) {
+            prog.push_unary("neg", x, dst);
+        } else {
+            prog.push_binary(op, x, y, dst);
+        }
+
         prog.free(x);
         prog.free(y);
         dst
@@ -203,21 +211,13 @@ impl Expr {
         let x = args[0].lower(prog);
         let y1 = args[1].lower(prog);
         let y2 = args[2].lower(prog);
-        // let t1 = prog.alloc_temp();
-        // let t2 = prog.alloc_temp();
         let dst = prog.alloc_temp();
 
         prog.push_ifelse(x, y1, y2, dst);
 
-        //prog.push_op("if_pos", x, y1, t1);
-        //prog.push_op("if_neg", x, y2, t2);
-        //prog.push_op("plus", t1, t2, dst);
-
         prog.free(x);
         prog.free(y1);
         prog.free(y2);
-        // prog.free(t1);
-        // prog.free(t2);
 
         dst
     }

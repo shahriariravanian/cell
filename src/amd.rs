@@ -14,6 +14,16 @@ pub struct NativeCompiler {
     buf: Vec<u8>,
 }
 
+#[derive(Debug)]
+pub enum Comparison {
+    Eq,
+    NotEq,
+    Greater,
+    GreaterEq,
+    Less,
+    LessEq,
+}
+
 impl NativeCompiler {
     const XMM0: u8 = 0;
     const XMM1: u8 = 1;
@@ -36,19 +46,34 @@ impl NativeCompiler {
         Self { buf: Vec::new() }
     }
 
+    fn byte(&mut self, b: u8) {
+        self.buf.push(b);
+    }
+
+    fn bytes(&mut self, bs: &[u8]) {
+        self.buf.extend_from_slice(bs);
+    }
+
     fn op_code(&mut self, op: &str, p: Proc) {
         match op {
             "mov" => {}
-            "plus" => self.buf.extend_from_slice(&[0xf2, 0x0f, 0x58, 0xc1]), // addsd xmm0, xmm1
-            "minus" => self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5c, 0xc1]), // subsd xmm0, xmm1
-            "times" => self.buf.extend_from_slice(&[0xf2, 0x0f, 0x59, 0xc1]), // mulsd xmm0, xmm1
-            "divide" => self.buf.extend_from_slice(&[0xf2, 0x0f, 0x5e, 0xc1]), // divsd xmm0, xmm1
-            "gt" => self.comparison(0x77),                                   // ja
-            "geq" => self.comparison(0x73),                                  // jae
-            "lt" => self.comparison(0x72),                                   // jb
-            "leq" => self.comparison(0x76),                                  // jbe
-            "eq" => self.comparison(0x74),                                   // je
-            "neq" => self.comparison(0x75),                                  // jne
+            "plus" => self.add(Self::XMM0, Self::XMM1),
+            "minus" => self.sub(Self::XMM0, Self::XMM1),
+            "times" => self.mul(Self::XMM0, Self::XMM1),
+            "divide" => self.div(Self::XMM0, Self::XMM1),
+            "gt" => self.comparison(Comparison::Greater, Self::XMM0, Self::XMM1),
+            "geq" => self.comparison(Comparison::GreaterEq, Self::XMM0, Self::XMM1),
+            "lt" => self.comparison(Comparison::Less, Self::XMM0, Self::XMM1),
+            "leq" => self.comparison(Comparison::LessEq, Self::XMM0, Self::XMM1),
+            "eq" => self.comparison(Comparison::Eq, Self::XMM0, Self::XMM1),
+            "neq" => self.comparison(Comparison::NotEq, Self::XMM0, Self::XMM1),
+            "and" => self.and(Self::XMM0, Self::XMM1),
+            "or" => self.or(Self::XMM0, Self::XMM1),
+            "xor" => self.xor(Self::XMM0, Self::XMM1),
+            "neg" => {
+                self.load_xmm_reg(Self::XMM1, Reg(3));
+                self.xor(Self::XMM0, Self::XMM1);
+            }
             _ => {
                 // println!("{:x}:\t{}", self.buf.len(), op);
                 self.load_reg(Self::RAX, Self::RBX, 8 * p.0); // mov    rax,QWORD PTR [rbx+8*f]
@@ -57,85 +82,125 @@ impl NativeCompiler {
         }
     }
 
-    fn comparison(&mut self, code: u8) {
-        self.buf.extend_from_slice(&[0x66, 0x0f, 0x2e, 0xc1]); // ucomisd xmm0, xmm1
-        self.buf.push(code); // Jx code
-        self.buf.push(0x07); // jump 5 + 2 bytes
-        self.load_xmm(Self::XMM0, Self::RBP, 16); // Reg(2) = -1
-        self.buf.push(0xeb); // JMP
-        self.buf.push(0x05); // jump 5 bytes
-        self.load_xmm(Self::XMM0, Self::RBP, 8); // Reg(1) = 1
+    fn comparison(&mut self, cmp: Comparison, dst: u8, src: u8) {
+        self.bytes(&[0xf2, 0x0f, 0xc2]);
+        self.modrm_reg(src, dst);
+
+        let code = match cmp {
+            Comparison::Eq => 0,
+            Comparison::NotEq => 4,
+            Comparison::Greater => 6, // strictly, this is not-less-than-or-equal
+            Comparison::GreaterEq => 5, // strictly, this is not-less-than
+            Comparison::Less => 1,
+            Comparison::LessEq => 2,
+        };
+
+        self.byte(code);
     }
 
+    // xmm0 > 0 ? xmm1 : xmm2
     fn ifelse(&mut self) {
-        self.buf.extend_from_slice(&[0x66, 0x0f, 0x50, 0xc0]); //      movmskpd eax, xmm0
-        self.buf.extend_from_slice(&[0x83, 0xe0, 0x01]); //      and eax, 1
-        self.buf.extend_from_slice(&[0x75, 0x06]); //      jnz _neg
-        self.move_xmm(Self::XMM0, Self::XMM1); //      move xmm0, xmm1
-        self.buf.extend_from_slice(&[0xeb, 0x04]); //      jmp _done
-                                                   // neg:
-        self.move_xmm(Self::XMM0, Self::XMM2); //      move xmm0, xmm2
-                                               // done:
+        self.move_xmm(Self::XMM3, Self::XMM0);
+        self.and(Self::XMM0, Self::XMM1);
+        self.andnot(Self::XMM3, Self::XMM2);
+        self.add(Self::XMM0, Self::XMM3);
+    }
+
+    fn add(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0xf2, 0x0f, 0x58]);
+        self.modrm_reg(src, dst);
+    }
+
+    fn sub(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0xf2, 0x0f, 0x5c]);
+        self.modrm_reg(src, dst);
+    }
+
+    fn mul(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0xf2, 0x0f, 0x59]);
+        self.modrm_reg(src, dst);
+    }
+
+    fn div(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0xf2, 0x0f, 0x5e]);
+        self.modrm_reg(src, dst);
+    }
+
+    fn and(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0x66, 0x0f, 0x54]);
+        self.modrm_reg(src, dst);
+    }
+
+    fn andnot(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0x66, 0x0f, 0x55]);
+        self.modrm_reg(src, dst);
+    }
+
+    fn or(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0x66, 0x0f, 0x56]);
+        self.modrm_reg(src, dst);
+    }
+
+    fn xor(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0x66, 0x0f, 0x57]);
+        self.modrm_reg(src, dst);
     }
 
     fn push_reg(&mut self, r: u8) {
-        self.buf.push(0x50 + r);
+        self.byte(0x50 + r);
     }
 
     fn pop_reg(&mut self, r: u8) {
-        self.buf.push(0x58 + r);
+        self.byte(0x58 + r);
     }
 
     fn ret(&mut self) {
-        self.buf.push(0xc3);
+        self.byte(0xc3);
     }
 
     fn call_reg(&mut self, r: u8) {
-        self.buf.push(0xff);
-        self.buf.push(0xd0 + r);
+        self.byte(0xff);
+        self.byte(0xd0 + r);
     }
 
     fn modrm_reg(&mut self, dst: u8, src: u8) {
-        self.buf.push(0xC0 + (src << 3) + dst);
+        self.byte(0xC0 + (src << 3) + dst);
     }
 
     fn move_reg(&mut self, dst: u8, src: u8) {
-        self.buf.push(0x48); // REX
-        self.buf.push(0x89); // MOV
+        self.byte(0x48); // REX
+        self.byte(0x89); // MOV
         self.modrm_reg(dst, src);
     }
 
     fn modrm_mem(&mut self, dst: u8, base: u8, offset: usize) {
         if offset < 128 {
             // note: disp8 is 2's complement
-            self.buf.push(0x40 + (dst << 3) + base);
-            self.buf.push(offset as u8);
+            self.byte(0x40 + (dst << 3) + base);
+            self.byte(offset as u8);
         } else {
-            self.buf.push(0x80 + (dst << 3) + base);
-            self.buf.push(offset as u8);
-            self.buf.push((offset >> 8) as u8);
-            self.buf.push((offset >> 16) as u8);
-            self.buf.push((offset >> 24) as u8);
+            self.byte(0x80 + (dst << 3) + base);
+            self.byte(offset as u8);
+            self.byte((offset >> 8) as u8);
+            self.byte((offset >> 16) as u8);
+            self.byte((offset >> 24) as u8);
         }
     }
 
     fn load_reg(&mut self, r: u8, base: u8, offset: usize) {
-        self.buf.push(0x48); // REX
-        self.buf.push(0x8b); // MOV
+        self.byte(0x48); // REX
+        self.byte(0x8b); // MOV
         self.modrm_mem(r, base, offset);
     }
 
     fn move_xmm(&mut self, dst: u8, src: u8) {
-        self.buf.extend_from_slice(&[0xf2, 0x0f, 0x10]);
+        self.bytes(&[0xf2, 0x0f, 0x10]);
         self.modrm_reg(src, dst);
     }
 
     fn load_xmm_reg(&mut self, r: u8, x: Reg) {
         if x == Reg(0) {
-            self.buf.push(0x66); // XORPD r, r
-            self.buf.push(0x0f);
-            self.buf.push(0x57);
-            self.modrm_reg(r, r);
+            self.xor(r, r);
         } else {
             self.load_xmm(r, Self::RBP, 8 * x.0);
         }
@@ -148,16 +213,16 @@ impl NativeCompiler {
     }
 
     fn load_xmm(&mut self, r: u8, base: u8, offset: usize) {
-        self.buf.push(0xf2);
-        self.buf.push(0x0f);
-        self.buf.push(0x10);
+        self.byte(0xf2);
+        self.byte(0x0f);
+        self.byte(0x10);
         self.modrm_mem(r, base, offset);
     }
 
     fn save_xmm(&mut self, r: u8, base: u8, offset: usize) {
-        self.buf.push(0xf2);
-        self.buf.push(0x0f);
-        self.buf.push(0x11);
+        self.byte(0xf2);
+        self.byte(0x0f);
+        self.byte(0x11);
         self.modrm_mem(r, base, offset);
     }
 

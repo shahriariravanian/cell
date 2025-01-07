@@ -39,6 +39,7 @@ impl Frame {
         f.alloc(RegType::Const, Some(0.0));
         f.alloc(RegType::Const, Some(1.0));
         f.alloc(RegType::Const, Some(-1.0));
+        f.alloc(RegType::Const, Some(-0.0)); // MSB is 1, all other bits are 0, used for negation by xoring
 
         f
     }
