@@ -98,11 +98,11 @@ impl NativeCompiler {
         self.byte(code);
     }
 
-    // xmm0 > 0 ? xmm1 : xmm2
+    // xmm2 == true ? xmm0 : xmm1
     fn ifelse(&mut self) {
-        self.move_xmm(Self::XMM3, Self::XMM0);
-        self.and(Self::XMM0, Self::XMM1);
-        self.andnot(Self::XMM3, Self::XMM2);
+        self.move_xmm(Self::XMM3, Self::XMM2);
+        self.and(Self::XMM0, Self::XMM2);
+        self.andnot(Self::XMM3, Self::XMM1);
         self.add(Self::XMM0, Self::XMM3);
     }
 
@@ -248,15 +248,15 @@ impl NativeCompiler {
                     }
                     r = *dst;
                 }
-                Instruction::IfElse { x, y, z, dst } => {
-                    if *x != r {
-                        saveables.insert(*x);
+                Instruction::IfElse { x1, x2, cond, dst } => {
+                    if *x1 != r {
+                        saveables.insert(*x1);
                     }
-                    if *y != r {
-                        saveables.insert(*y);
+                    if *x2 != r {
+                        saveables.insert(*x2);
                     }
-                    if *z != r {
-                        saveables.insert(*z);
+                    if *cond != r {
+                        saveables.insert(*cond);
                     }
                     r = *dst;
                 }
@@ -303,21 +303,21 @@ impl Compiler<MachineCode> for NativeCompiler {
                     self.op_code(&op, *p);
                     r = *dst;
                 }
-                Instruction::IfElse { x, y, z, dst } => {
-                    if *y == r {
-                        self.move_xmm(Self::XMM1, Self::XMM0);
-                    } else {
-                        self.load_xmm_reg(Self::XMM1, *y);
-                    }
-
-                    if *z == r {
+                Instruction::IfElse { x1, x2, cond, dst } => {
+                    if *cond == r {
                         self.move_xmm(Self::XMM2, Self::XMM0);
                     } else {
-                        self.load_xmm_reg(Self::XMM2, *z);
+                        self.load_xmm_reg(Self::XMM2, *cond);
+                    }
+                
+                    if *x2 == r {
+                        self.move_xmm(Self::XMM1, Self::XMM0);
+                    } else {
+                        self.load_xmm_reg(Self::XMM1, *x2);
                     }
 
-                    if *x != r {
-                        self.load_xmm_reg(Self::XMM0, *x);
+                    if *x1 != r {
+                        self.load_xmm_reg(Self::XMM0, *x1);
                     }
 
                     self.ifelse();

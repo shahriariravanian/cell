@@ -88,6 +88,14 @@ impl Frame {
             false
         }
     }
+    
+    pub fn is_temp(&self, r: &Reg) -> bool {
+        if let (RegType::Temp, _) = self.regs[r.0] {
+            true
+        } else {
+            false
+        }
+    }
 
     pub fn find(&self, t: &RegType) -> Option<Reg> {
         self.lookup.get(t).map(|idx| Reg(*idx))

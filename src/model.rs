@@ -63,6 +63,10 @@ impl Program {
         };
         Proc(p)
     }
+    
+    pub fn push_eq(&mut self, dst: Reg) {
+        self.code.push(Instruction::Eq { dst })
+    }
 
     // pushes an Op into code and adjusts the virtual table accordingly
     pub fn push_unary(&mut self, op: &str, x: Reg, dst: Reg) {
@@ -88,8 +92,8 @@ impl Program {
         })
     }
 
-    pub fn push_ifelse(&mut self, x: Reg, y: Reg, z: Reg, dst: Reg) {
-        self.code.push(Instruction::IfElse { x, y, z, dst })
+    pub fn push_ifelse(&mut self, x1: Reg, x2: Reg, cond: Reg, dst: Reg) {
+        self.code.push(Instruction::IfElse { x1, x2, cond, dst })
     }
 
     // allocates a constant register
@@ -198,8 +202,9 @@ impl Expr {
             prog.push_binary(op, x, y, dst);
         }
 
-        prog.free(x);
         prog.free(y);
+        prog.free(x);
+        
         dst
     }
 
@@ -207,17 +212,17 @@ impl Expr {
         if op != "ifelse" {
             return self.lower_poly(prog, op, args);
         }
-
-        let x = args[0].lower(prog);
-        let y1 = args[1].lower(prog);
-        let y2 = args[2].lower(prog);
+        
+        let x1 = args[1].lower(prog);
+        let x2 = args[2].lower(prog);
+        let cond = args[0].lower(prog);
         let dst = prog.alloc_temp();
 
-        prog.push_ifelse(x, y1, y2, dst);
+        prog.push_ifelse(x1, x2, cond, dst);
 
-        prog.free(x);
-        prog.free(y1);
-        prog.free(y2);
+        prog.free(cond);
+        prog.free(x2);
+        prog.free(x1);        
 
         dst
     }
@@ -289,7 +294,7 @@ pub struct Equation {
 
 impl Lower for Equation {
     fn lower(&self, prog: &mut Program) -> Reg {
-        let src = self.rhs.lower(prog);
+        // let src = self.rhs.lower(prog);
 
         let dst = if let Some(var) = self.lhs.diff_var() {
             prog.reg_diff(&var)
@@ -298,6 +303,10 @@ impl Lower for Equation {
         } else {
             panic!("undefined diff variable");
         };
+        
+        prog.push_eq(dst);
+        
+        let src = self.rhs.lower(prog);
 
         prog.push_unary("mov", src, dst);
         Reg(0)

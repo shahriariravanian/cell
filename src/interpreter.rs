@@ -40,11 +40,11 @@ impl Compiled for ByteCode {
                 Instruction::Binary { p, x, y, dst, .. } => {
                     self._mem[dst.0] = self.vt[p.0](self._mem[x.0], self._mem[y.0]);
                 }
-                Instruction::IfElse { x, y, z, dst } => {
-                    self._mem[dst.0] = if self._mem[x.0] > 0.0 {
-                        self._mem[y.0]
+                Instruction::IfElse { x1, x2, cond, dst } => {
+                    self._mem[dst.0] = if self._mem[cond.0] > 0.0 {
+                        self._mem[x1.0]
                     } else {
-                        self._mem[z.0]
+                        self._mem[x2.0]
                     }
                 }
                 _ => {}

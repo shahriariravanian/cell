@@ -1,7 +1,5 @@
 use anyhow::Result;
-use wasmi::*;
-use wat;
-
+use wasmtime::*;
 use std::fmt::Write;
 
 use crate::code::*;
@@ -62,7 +60,7 @@ impl WasmCompiler {
     fn op_code(&mut self, op: &str) -> OpType {
         match op {
             "mov" => OpType::Nop(ArgType::F64),
-            "neg" => OpType::Unary("f64.negate", ArgType::F64, ArgType::F64),
+            "neg" => OpType::Unary("f64.neg", ArgType::F64, ArgType::F64),
             "sin" => OpType::Unary("call $sin", ArgType::F64, ArgType::F64),
             "cos" => OpType::Unary("call $cos", ArgType::F64, ArgType::F64),
             "tan" => OpType::Unary("call $tan", ArgType::F64, ArgType::F64),
@@ -177,11 +175,11 @@ impl WasmCompiler {
                         store: true,
                     });
                 }
-                Instruction::IfElse { x, y, z, dst } => {
+                Instruction::IfElse { x1, x2, cond, dst } => {
                     code.push(Op {
-                        x: Some(*y),
-                        y: Some(*z),
-                        z: Some(*x),
+                        x: Some(*x1),
+                        y: Some(*x2),
+                        z: Some(*cond),
                         dst: Some(*dst),
                         op: "select".to_string(),
                         store: true,
@@ -225,7 +223,7 @@ impl Compiler<WasmCode> for WasmCompiler {
                 store,
             } = c;
 
-            if let Some(dst) = dst {
+            if let Some(dst) = dst {                
                 self.push(format!("i32.const {}", 8 * dst.0).as_str());
             }
 
@@ -274,7 +272,6 @@ impl Compiler<WasmCode> for WasmCompiler {
 
 type HostState = u32;
 
-#[derive(Debug)]
 pub struct WasmCode {
     _mem: Vec<f64>,
     wat: String,
@@ -290,23 +287,23 @@ pub struct WasmCode {
 impl WasmCode {
     fn new(wat: String, _mem: Vec<f64>) -> Result<WasmCode> {
         let engine = Engine::default();
-        let wasm = wat::parse_str(wat.as_str())?;
-        let module = Module::new(&engine, &mut &wasm[..])?;
-        let mut store = Store::new(&engine, 0);
-        let mut linker = <Linker<HostState>>::new(&engine);
+        let module = Module::new(&engine, wat.as_str())?;
+        let mut linker = Linker::<HostState>::new(&engine);
+        
+        Self::imports(&mut linker).expect("error in importing functions to wasm");
+        
+        let mut store: Store<HostState> = Store::new(&engine, 0);
+        let instance = linker.instantiate(&mut store, &module)?;
+        let run = instance.get_typed_func::<(), ()>(&mut store, "run")?;
 
-        Self::imports(&mut store, &mut linker).expect("error in importing functions to wasm");
 
-        let instance = linker.instantiate(&mut store, &module)?.start(&mut store)?;
+        let instance = linker.instantiate(&mut store, &module)?;
 
-        let run = instance.get_typed_func::<(), ()>(&store, "run")?;
-        let memory = instance.get_memory(&store, "memory").unwrap();
-
-        let p: &mut [f64] = unsafe {
-            std::slice::from_raw_parts_mut(memory.data_ptr(&store) as *mut f64, _mem.len())
-        };
-
-        p.copy_from_slice(&_mem[..]);
+        let run = instance.get_typed_func::<(), ()>(&mut store, "run")?;
+        let mut memory = instance.get_memory(&mut store, "memory").unwrap();
+        
+        let p: &mut [f64] = unsafe{ std::mem::transmute(memory.data_mut(&mut store)) };
+        let _ = p[.._mem.len()].copy_from_slice(&_mem[..]);
 
         let wasm = WasmCode {
             _mem,
@@ -323,132 +320,21 @@ impl WasmCode {
         Ok(wasm)
     }
 
-    pub fn imports(store: &mut Store<HostState>, linker: &mut Linker<HostState>) -> Result<()> {
-        linker.define(
-            "code",
-            "sin",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.sin() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "cos",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.cos() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "tan",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.tan() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "csc",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { 1.0 / x.sin() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "sec",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { 1.0 / x.cos() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "cot",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { 1.0 / x.tan() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "asin",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.asin() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "acos",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.acos() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "atan",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.atan() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "exp",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.exp() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "ln",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.ln() },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "log",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64| -> f64 { x.log(10.0) },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "rem",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 { x % y },
-            ),
-        )?;
-
-        linker.define(
-            "code",
-            "power",
-            Func::wrap(
-                &mut *store,
-                |_caller: Caller<'_, HostState>, x: f64, y: f64| -> f64 { x.powf(y) },
-            ),
-        )?;
+    pub fn imports(linker: &mut Linker<HostState>) -> Result<()> {
+        linker.func_wrap("code", "sin", |x: f64| -> f64 { x.sin() })?;
+        linker.func_wrap("code", "cos", |x: f64| -> f64 { x.cos() })?;
+        linker.func_wrap("code", "tan", |x: f64| -> f64 { x.tan() })?;
+        linker.func_wrap("code", "csc", |x: f64| -> f64 { 1.0 / x.sin() })?;
+        linker.func_wrap("code", "sec", |x: f64| -> f64 { 1.0 / x.cos() })?;
+        linker.func_wrap("code", "cot", |x: f64| -> f64 { 1.0 / x.tan() })?;
+        linker.func_wrap("code", "asin", |x: f64| -> f64 { x.asin() })?;
+        linker.func_wrap("code", "acos", |x: f64| -> f64 { x.acos() })?;
+        linker.func_wrap("code", "atan", |x: f64| -> f64 { x.atan() })?;
+        linker.func_wrap("code", "exp", |x: f64| -> f64 { x.exp() })?;
+        linker.func_wrap("code", "ln", |x: f64| -> f64 { x.ln() })?;
+        linker.func_wrap("code", "log", |x: f64| -> f64 { x.log(10.0) })?;
+        linker.func_wrap("code", "rem", |x: f64, y: f64| -> f64 { x % y })?;
+        linker.func_wrap("code", "power", |x: f64, y: f64| -> f64 { x.powf(y) })?;
 
         Ok(())
     }
@@ -461,23 +347,15 @@ impl Compiled for WasmCode {
 
     #[inline]
     fn mem(&self) -> &[f64] {
-        let p: &[f64] = unsafe {
-            std::slice::from_raw_parts(
-                self.memory.data_ptr(&self.store) as *const f64,
-                self._mem.len(),
-            )
-        };
+        let p: &[f64] = unsafe{ std::mem::transmute(self.memory.data(&self.store)) };
         p
     }
 
     #[inline]
     fn mem_mut(&mut self) -> &mut [f64] {
-        let p: &mut [f64] = unsafe {
-            std::slice::from_raw_parts_mut(
-                self.memory.data_ptr(&self.store) as *mut f64,
-                self._mem.len(),
-            )
-        };
+        let p: &mut [f64] = unsafe{ std::mem::transmute(self.memory.data_mut(&mut self.store)) };
         p
     }
 }
+
+

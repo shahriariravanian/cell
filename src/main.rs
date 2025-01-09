@@ -50,6 +50,8 @@ fn main() {
     let text = fs::read_to_string(args[2].as_str()).unwrap();
     let ml = CellModel::load(&text).unwrap();
     let prog = Program::new(&ml);
+    
+    println!("{:#?}", &prog);
 
     //let mut wasm = WasmCompiler::new().compile(&prog);
     //wasm.imports();

@@ -19,9 +19,9 @@ pub enum Instruction {
         p: Proc,
     },
     IfElse {
-        x: Reg,
-        y: Reg,
-        z: Reg,
+        x1: Reg,
+        x2: Reg,
+        cond: Reg,
         dst: Reg,
     },
     Num {
@@ -32,14 +32,10 @@ pub enum Instruction {
         name: String,
         reg: Reg,
     },
-    Nop,
-    Op {
-        op: String,
-        x: Reg,
-        y: Reg,
+    Eq {
         dst: Reg,
-        p: Proc,
     },
+    Nop,
 }
 
 impl std::fmt::Display for Instruction {
@@ -51,13 +47,13 @@ impl std::fmt::Display for Instruction {
             Instruction::Binary { op, x, y, dst, .. } => {
                 write!(f, "r{:<6}← r{} {} r{}", dst.0, x.0, op, y.0)
             }
-            Instruction::IfElse { x, y, z, dst } => {
-                write!(f, "r{:<6}← r{} ? r{} : r{}", dst.0, x.0, y.0, z.0)
+            Instruction::IfElse { x1, x2, cond, dst } => {
+                write!(f, "r{:<6}← r{} ? r{} : r{}", dst.0, cond.0, x1.0, x2.0)
             }
             Instruction::Num { val, dst } => write!(f, "r{:<6}= {}", dst.0, val),
             Instruction::Var { name, reg } => write!(f, "r{:<6}:: {}", reg.0, name),
-            Instruction::Nop => write!(f, "nop"),
-            Instruction::Op { .. } => write!(f, "error!"),
+            Instruction::Eq { dst } => write!(f, "r{:<6}= ?", dst.0),
+            Instruction::Nop => write!(f, "nop"),            
         }
     }
 }
