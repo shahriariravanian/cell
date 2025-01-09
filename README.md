@@ -1,77 +1,89 @@
+##  Benchmarking Code (benchmark.jl)
+
 ```julia
-julia> include("compiler.jl")
-test (generic function with 1 method)
+using DifferentialEquations
+using BenchmarkTools
+using Sundials
 
-julia> using CellMLToolkit, DifferentialEquations, BenchmarkTools
+include("compiler.jl")
 
-julia> ml = CellModel("/home/shahriar/af/Julia/CellMLToolkit.jl/models/beeler_reuter_1977.cellml.xml");
+ml = CellModel("../models/ohara_rudy_cipa_v1_2017.cellml.xml")
+p = get_p(ml)
+u0 = get_u0(ml)
 
-julia> p = get_p(ml);
+function trial(prob)    
+    return solve(prob, CVODE_BDF(), dtmax=0.1)
+end
 
-julia> u0 = get_u0(ml);
+prob = ODEProblem(ml.sys, u0, (0, 5000.0), p)
+S = trial(prob)
+n = length(S)
 
-julia> prob = ODEProblem(ml.sys, u0, (0, 5000.0), p);
+println("LLVM")
+b_llvm = @benchmark trial(prob) setup=(prob=ODEProblem(ml.sys, S[rand(1:n)], (0, 5000.0), p))
 
-julia> @benchmark sol = solve(prob, Euler(), dt=0.02)
-BenchmarkTools.Trial: 19 samples with 1 evaluation.
- Range (min … max):  138.930 ms … 717.277 ms  ┊ GC (min … max):  0.00% … 80.09%
- Time  (median):     208.293 ms               ┊ GC (median):    26.22%
- Time  (mean ± σ):   263.767 ms ± 171.915 ms  ┊ GC (mean ± σ):  41.79% ± 27.01%
+println("naive native")
+b_native = @benchmark trial(prob) setup=(prob=ODEProblem(compile(ml.sys, "native"), S[rand(1:n)], (0, 5000.0), p))
 
-  ▁█▁                                                         ▁  
-  ███▆▁▁▁▆▆▁▆▆▁▁▁▁▆▁▆▆▆▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
-  139 ms           Histogram: frequency by time          717 ms <
+println("wasm")
+b_wasm = @benchmark trial(prob) setup=(prob=ODEProblem(compile(ml.sys, "wasm"), S[rand(1:n)], (0, 5000.0), p))
 
- Memory estimate: 116.35 MiB, allocs estimate: 2000056.
+println("bytecode")
+b_bytecode = @benchmark trial(prob) setup=(prob=ODEProblem(compile(ml.sys, "bytecode"), S[rand(1:n)], (0, 5000.0), p))
+```
 
-julia> f = compile(ml.sys, "native");
-number states = 8, number params = 10
+## Trials:
 
-julia> prob = ODEProblem(f, u0, (0, 5000.0), p);
+```julia
+julia> include("benchmark.jl")
 
-julia> @benchmark sol = solve(prob, Euler(), dt=0.02)
-BenchmarkTools.Trial: 22 samples with 1 evaluation.
- Range (min … max):  142.301 ms … 914.903 ms  ┊ GC (min … max):  0.00% … 81.80%
- Time  (median):     205.509 ms               ┊ GC (median):    27.10%
- Time  (mean ± σ):   262.886 ms ± 193.052 ms  ┊ GC (mean ± σ):  41.49% ± 26.18%
+...
 
-  ▁█                                                             
-  ██▁▄▄▄▄▄▄▇▄▁▄▁▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄▁▁▁▁▁▁▁▁▁▁▁▁▄ ▁
-  142 ms           Histogram: frequency by time          915 ms <
+julia> b_llvm
+BenchmarkTools.Trial: 7 samples with 1 evaluation.
+ Range (min … max):  436.830 ms … 564.189 ms  ┊ GC (min … max): 0.00% … 17.73%
+ Time  (median):     501.427 ms               ┊ GC (median):    8.29%
+ Time  (mean ± σ):   493.752 ms ±  41.042 ms  ┊ GC (mean ± σ):  7.47% ±  6.12%
 
- Memory estimate: 116.35 MiB, allocs estimate: 2000052.
+  █         █         █         █ █  █                        █  
+  █▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁█▁█▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  437 ms           Histogram: frequency by time          564 ms <
 
-julia> f = compile(ml.sys, "bytecode");
-number states = 8, number params = 10
+ Memory estimate: 87.31 MiB, allocs estimate: 911136.
 
-julia> prob = ODEProblem(f, u0, (0, 5000.0), p);
+julia> b_native
+BenchmarkTools.Trial: 9 samples with 1 evaluation.
+ Range (min … max):  530.931 ms … 747.479 ms  ┊ GC (min … max): 0.00% … 16.62%
+ Time  (median):     570.149 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   593.075 ms ±  70.398 ms  ┊ GC (mean ± σ):  3.83% ±  6.40%
 
-julia> @benchmark sol = solve(prob, Euler(), dt=0.02)
-BenchmarkTools.Trial: 12 samples with 1 evaluation.
- Range (min … max):  328.306 ms …    1.007 s  ┊ GC (min … max):  0.00% … 65.10%
- Time  (median):     353.185 ms               ┊ GC (median):     0.00%
- Time  (mean ± σ):   441.562 ms ± 189.815 ms  ┊ GC (mean ± σ):  22.00% ± 20.63%
+  ▁    ▁▁  ▁ █▁                           ▁                   ▁  
+  █▁▁▁▁██▁▁█▁██▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  531 ms           Histogram: frequency by time          747 ms <
 
-  ▁█                                                             
-  ██▆▁▁▁▁▁▁▁▆▆▆▁▁▁▁▆▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▆ ▁
-  328 ms           Histogram: frequency by time          1.01 s <
+ Memory estimate: 90.08 MiB, allocs estimate: 1097417.
 
- Memory estimate: 116.35 MiB, allocs estimate: 2000052.
+julia> b_wasm
+BenchmarkTools.Trial: 9 samples with 1 evaluation.
+ Range (min … max):  524.159 ms … 704.000 ms  ┊ GC (min … max): 0.00% … 16.92%
+ Time  (median):     547.575 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   580.225 ms ±  67.693 ms  ┊ GC (mean ± σ):  3.80% ±  6.41%
 
-julia> f = compile(ml.sys, "wasm");
-number states = 8, number params = 10
+  ▁  ▁ ▁ █     ▁ ▁                                        ▁   ▁  
+  █▁▁█▁█▁█▁▁▁▁▁█▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█▁▁▁█ ▁
+  524 ms           Histogram: frequency by time          704 ms <
 
-julia> prob = ODEProblem(f, u0, (0, 5000.0), p);
+ Memory estimate: 90.18 MiB, allocs estimate: 1097334.
 
-julia> @benchmark sol = solve(prob, Euler(), dt=0.02)
-BenchmarkTools.Trial: 4 samples with 1 evaluation.
- Range (min … max):  1.505 s …   1.610 s  ┊ GC (min … max): 0.00% … 7.32%
- Time  (median):     1.510 s              ┊ GC (median):    0.00%
- Time  (mean ± σ):   1.534 s ± 50.817 ms  ┊ GC (mean ± σ):  1.92% ± 3.66%
+julia> b_bytecode
+BenchmarkTools.Trial: 3 samples with 1 evaluation.
+ Range (min … max):  1.777 s …   1.940 s  ┊ GC (min … max): 0.00% … 4.25%
+ Time  (median):     1.939 s              ┊ GC (median):    0.00%
+ Time  (mean ± σ):   1.885 s ± 93.626 ms  ┊ GC (mean ± σ):  1.46% ± 2.45%
 
-  █     ▁                                                 ▁  
-  █▁▁▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
-  1.5 s          Histogram: frequency by time        1.61 s <
+  ▁                                                       █  
+  █▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁█ ▁
+  1.78 s         Histogram: frequency by time        1.94 s <
 
- Memory estimate: 116.35 MiB, allocs estimate: 2000052.
+ Memory estimate: 90.09 MiB, allocs estimate: 1097159.
 ```
