@@ -25,7 +25,8 @@ fn solve(r: &mut Runnable) {
     let u0 = r.initial_states();
     let p = r.params();
     let alg = Euler::new(0.02, 50);
-
+    //let sol = alg.solve(r, u0.clone(), p.clone(), 0.0..1000.0);
+    
     let now = Instant::now();
     // let alg = Euler::new(0.001, 10);
     let sol = alg.solve(r, u0, p, 0.0..5000.0);
@@ -51,10 +52,8 @@ fn main() {
     let ml = CellModel::load(&text).unwrap();
     let prog = Program::new(&ml);
     
-    println!("{:#?}", &prog);
-
-    //let mut wasm = WasmCompiler::new().compile(&prog);
-    //wasm.imports();
+    // println!("{:#?}", &prog);
+    println!("running...");
 
     let ty = match args[1].as_str() {
         "bytecode" => CompilerType::ByteCode,

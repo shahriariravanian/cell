@@ -59,7 +59,7 @@ impl WasmCompiler {
 
     fn op_code(&mut self, op: &str) -> OpType {
         match op {
-            "mov" => OpType::Nop(ArgType::F64),
+            "mov" => OpType::Unary("f64.store", ArgType::F64, ArgType::F64),
             "neg" => OpType::Unary("f64.neg", ArgType::F64, ArgType::F64),
             "sin" => OpType::Unary("call $sin", ArgType::F64, ArgType::F64),
             "cos" => OpType::Unary("call $cos", ArgType::F64, ArgType::F64),
@@ -127,80 +127,8 @@ impl WasmCompiler {
             self.push(cmd.as_str());
         }
     }
-
-    fn reg_load(&mut self, prog: &Program, r: Option<Reg>, ty: ArgType) {
-        if let Some(r) = r {
-            let (t, val) = prog.frame.regs[r.0].clone();
-
-            let p = match ty {
-                ArgType::F64 => "f64",
-                ArgType::I32 => "i32",
-            };
-
-            let s = match t {
-                RegType::Const => {
-                    format!("{}.const {}", p, val.unwrap_or(0.0))
-                }
-                _ => {
-                    format!("({}.load (i32.const {}))", p, 8 * r.0)
-                }
-            };
-
-            self.push(s.as_str());
-        }
-    }
-
-    fn filter_code(&self, prog: &Program) -> Vec<Op> {
-        let mut code: Vec<Op> = Vec::new();
-
-        for c in prog.code.iter() {
-            match c {
-                Instruction::Unary { op, x, dst, .. } => {
-                    code.push(Op {
-                        x: Some(*x),
-                        y: None,
-                        z: None,
-                        dst: Some(*dst),
-                        op: op.clone(),
-                        store: true,
-                    });
-                }
-                Instruction::Binary { op, x, y, dst, .. } => {
-                    code.push(Op {
-                        x: Some(*x),
-                        y: Some(*y),
-                        z: None,
-                        dst: Some(*dst),
-                        op: op.clone(),
-                        store: true,
-                    });
-                }
-                Instruction::IfElse { x1, x2, cond, dst } => {
-                    code.push(Op {
-                        x: Some(*x1),
-                        y: Some(*x2),
-                        z: Some(*cond),
-                        dst: Some(*dst),
-                        op: "select".to_string(),
-                        store: true,
-                    });
-                }
-                _ => {}
-            }
-        }
-
-        for i in 0..code.len() - 1 {
-            if code[i].dst == code[i + 1].x && code[i].x.is_some() {
-                code[i].dst = code[i + 1].dst;
-                code[i].store = false;
-                code[i + 1].x = None;
-                code[i + 1].dst = None;
-            }
-        }
-
-        code
-    }
 }
+
 
 impl Compiler<WasmCode> for WasmCompiler {
     fn compile(&mut self, prog: &Program) -> WasmCode {
@@ -210,53 +138,37 @@ impl Compiler<WasmCode> for WasmCompiler {
         self.push("(export \"memory\" (memory $memory))");
 
         self.push("(func $run");
-
-        let code = self.filter_code(prog);
-
-        for c in code.iter() {
-            let Op {
-                x,
-                y,
-                z,
-                dst,
-                op,
-                store,
-            } = c;
-
-            if let Some(dst) = dst {                
-                self.push(format!("i32.const {}", 8 * dst.0).as_str());
-            }
-
-            let dst_t = match self.op_code(op) {
-                OpType::Unary(s, dst_t, x_t) => {
-                    self.reg_load(prog, *x, x_t);
-                    self.push(s);
-                    dst_t
+        
+        for c in prog.code.iter() {
+            // self.push(format!(";; {}", c).as_str());
+            match c {
+                Instruction::Unary { op, .. } => {
+                    if let OpType::Unary(s, ..) = self.op_code(op) {
+                        self.push(s);
+                    } else {
+                        panic!("unkown unary op");
+                    }
                 }
-                OpType::Binary(s, dst_t, x_t, y_t) => {
-                    self.reg_load(prog, *x, x_t);
-                    self.reg_load(prog, *y, y_t);
-                    self.push(s);
-                    dst_t
+                Instruction::Binary { op, .. } => {
+                    if let OpType::Binary(s, ..) = self.op_code(op) {
+                        self.push(s);
+                    } else {
+                        panic!("unkown binary op");
+                    }
                 }
-                OpType::Ternary(s, dst_t, x_t, y_t, z_t) => {
-                    self.reg_load(prog, *x, x_t);
-                    self.reg_load(prog, *y, y_t);
-                    self.reg_load(prog, *z, z_t);
-                    self.push(s);
-                    dst_t
+                Instruction::IfElse { .. } => {
+                    self.push("select");
                 }
-                OpType::Nop(dst_t) => {
-                    self.reg_load(prog, *x, dst_t);
-                    dst_t
+                Instruction::Eq { dst } => {
+                    self.push(format!("i32.const {}", 8 * dst.0).as_str());                     
                 }
-            };
-
-            if *store {
-                match dst_t {
-                    ArgType::F64 => self.push("f64.store"),
-                    ArgType::I32 => self.push("i32.store"),
+                Instruction::Num { val, .. } => {
+                    self.push(format!("f64.const {}", val).as_str())
                 }
+                Instruction::Var { reg, .. } => {
+                    self.push(format!("(f64.load (i32.const {}))", 8 * reg.0).as_str())
+                }
+                _ => {}
             }
         }
 
@@ -269,6 +181,7 @@ impl Compiler<WasmCode> for WasmCompiler {
         WasmCode::new(self.buf.clone(), prog.frame.mem()).unwrap()
     }
 }
+
 
 type HostState = u32;
 

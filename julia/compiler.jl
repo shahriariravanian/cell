@@ -23,7 +23,7 @@ function compile(sys, ty="native")  # ty is 'native', 'bytecode', or 'wasm'
     ns = ccall((:count_states, libpath), Cint, (Ptr{Cvoid},), ref)
     np = ccall((:count_params, libpath), Cint, (Ptr{Cvoid},), ref)
     
-    println("number states = $ns, number params = $np")
+    # println("number states = $ns, number params = $np")
     
     q = Compiler(ref)
     

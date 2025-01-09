@@ -52,6 +52,10 @@ impl Program {
     pub fn push(&mut self, s: Instruction) {
         self.code.push(s)
     }
+    
+    pub fn pop(&mut self) {
+        let _ = self.code.pop();
+    }
 
     fn proc(&mut self, op: &str) -> Proc {
         let p = match self.ft.iter().position(|s| s == op) {
@@ -190,23 +194,46 @@ impl Expr {
     }
 
     fn lower_binary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
-        let x = args[0].lower(prog);
+        if op == "times" {
+            return self.lower_times(prog, args)
+        }
+    
+        let x = args[0].lower(prog);        
         let y = args[1].lower(prog);
         let dst = prog.alloc_temp();
-
-        if op == "times" && x == Reg(2) {
-            prog.push_unary("neg", y, dst);
-        } else if op == "times" && y == Reg(2) {
-            prog.push_unary("neg", x, dst);
-        } else {
-            prog.push_binary(op, x, y, dst);
-        }
-
+        
+        prog.push_binary(op, x, y, dst);
         prog.free(y);
         prog.free(x);
         
         dst
     }
+    
+    fn lower_times(&self, prog: &mut Program, args: &Vec<Expr>) -> Reg {    
+        let x = args[0].lower(prog);
+        let dst = prog.alloc_temp();
+        
+        if x == Reg(2) {
+            prog.pop();
+            let y = args[1].lower(prog);
+            prog.push_unary("neg", y, dst);
+            prog.free(y);
+        } else {
+            let y = args[1].lower(prog);
+            if y == Reg(2) {
+                prog.pop();
+                prog.push_unary("neg", x, dst);
+            } else {
+                prog.push_binary("times", x, y, dst);
+            };
+            prog.free(y);
+        }        
+        
+        prog.free(x);
+        
+        dst
+    }
+
 
     fn lower_ternary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
         if op != "ifelse" {
@@ -252,18 +279,33 @@ impl Lower for Expr {
                 // Optimization!
                 // we assume that the value of Reg(0) is 0.0, Reg(1) is 1,
                 // and Reg(2) is -1
+                /*
                 if *val == 0.0 {
                     Reg(0)
                 } else if *val == 1.0 {
                     Reg(1)
                 } else if *val == -1.0 {
                     Reg(2)
-                } else {
+                } else {                
+                
                     // let dst = prog.alloc_temp();
                     let dst = prog.alloc_const(*val);
                     prog.push(Instruction::Num { val: *val, dst }); // not needed for code generation, useful for debugging
                     dst
-                }
+                //}
+                */
+                let dst = if *val == 0.0 {
+                    Reg(0)
+                } else if *val == 1.0 {
+                    Reg(1)
+                } else if *val == -1.0 {
+                    Reg(2)
+                } else {                                    
+                    prog.alloc_const(*val)
+                };
+                prog.push(Instruction::Num { val: *val, dst });
+                dst
+                
             }
             Expr::Var { name } => {
                 // Technically, this is not necessary but having Instruction::Var in the code
