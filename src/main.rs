@@ -52,7 +52,7 @@ fn main() {
     let ml = CellModel::load(&text).unwrap();
     let prog = Program::new(&ml);
     
-    // println!("{:#?}", &prog);
+    println!("{:#?}", &prog);
     println!("running...");
 
     let ty = match args[1].as_str() {

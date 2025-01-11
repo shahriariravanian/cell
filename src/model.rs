@@ -21,18 +21,18 @@ impl Program {
     pub fn new(ml: &CellModel) -> Program {
         let mut frame = Frame::new();
 
-        frame.alloc(RegType::Var(ml.iv.name.clone()), None);
+        frame.alloc(RegType::Var(ml.iv.name.clone()));
 
         for v in &ml.states {
-            frame.alloc(RegType::State(v.name.clone()), Some(v.val));
+            frame.alloc(RegType::State(v.name.clone(), v.val));
         }
 
         for v in &ml.states {
-            frame.alloc(RegType::Diff(v.name.clone()), None);
+            frame.alloc(RegType::Diff(v.name.clone()));
         }
 
         for v in &ml.params {
-            frame.alloc(RegType::Param(v.name.clone()), Some(v.val));
+            frame.alloc(RegType::Param(v.name.clone(), v.val));
         }
 
         let mut prog = Program {
@@ -102,17 +102,17 @@ impl Program {
 
     // allocates a constant register
     pub fn alloc_const(&mut self, val: f64) -> Reg {
-        self.frame.alloc(RegType::Const, Some(val))
+        self.frame.alloc(RegType::Const(val))
     }
 
     // allocates a temporary register
     pub fn alloc_temp(&mut self) -> Reg {
-        self.frame.alloc(RegType::Temp, None)
+        self.frame.alloc(RegType::Temp)
     }
 
     // allocates an obeservable register
     pub fn alloc_obs(&mut self, name: &str) -> Reg {
-        self.frame.alloc(RegType::Obs(name.to_string()), None)
+        self.frame.alloc(RegType::Obs(name.to_string()))
     }
 
     pub fn free(&mut self, r: Reg) {
@@ -120,19 +120,11 @@ impl Program {
     }
 
     pub fn reg(&self, name: &str) -> Reg {
-        for reg_type in [RegType::State, RegType::Param, RegType::Obs, RegType::Var] {
-            if let Some(r) = self.frame.find(&reg_type(name.to_string())) {
-                return r;
-            }
-        }
-        panic!("cannot find reg by name");
+        self.frame.find(name).expect("cannot find reg by name")
     }
 
     pub fn reg_diff(&self, name: &str) -> Reg {
-        if let Some(r) = self.frame.find(&RegType::Diff(name.to_string())) {
-            return r;
-        }
-        panic!("cannot find diff by name");
+        self.frame.find_diff(name).expect("cannot find reg by name")
     }
 
     pub fn virtual_table(&self) -> Vec<fn(f64, f64) -> f64> {
