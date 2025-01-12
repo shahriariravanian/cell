@@ -66,7 +66,8 @@ pub extern "C" fn compile(p: *const c_char, ty: *const c_char) -> *const Compile
         }
     };
 
-    let prog = Program::new(&ml);
+    let reuse = ty != "native";
+    let prog = Program::new(&ml, reuse);
 
     // println!("{:#?}", &prog);
 

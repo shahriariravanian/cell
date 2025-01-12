@@ -1,10 +1,10 @@
 use anyhow::Result;
-use wasmtime::*;
 use std::fmt::Write;
+use wasmtime::*;
 
 use crate::code::*;
 use crate::model::Program;
-use crate::register::{Reg, RegType};
+use crate::register::Reg;
 use crate::utils::*;
 
 #[derive(Debug, Copy, Clone)]
@@ -129,7 +129,6 @@ impl WasmCompiler {
     }
 }
 
-
 impl Compiler<WasmCode> for WasmCompiler {
     fn compile(&mut self, prog: &Program) -> WasmCode {
         self.push("(module");
@@ -138,7 +137,7 @@ impl Compiler<WasmCode> for WasmCompiler {
         self.push("(export \"memory\" (memory $memory))");
 
         self.push("(func $run");
-        
+
         for c in prog.code.iter() {
             // self.push(format!(";; {}", c).as_str());
             match c {
@@ -160,11 +159,9 @@ impl Compiler<WasmCode> for WasmCompiler {
                     self.push("select");
                 }
                 Instruction::Eq { dst } => {
-                    self.push(format!("i32.const {}", 8 * dst.0).as_str());                     
+                    self.push(format!("i32.const {}", 8 * dst.0).as_str());
                 }
-                Instruction::Num { val, .. } => {
-                    self.push(format!("f64.const {}", val).as_str())
-                }
+                Instruction::Num { val, .. } => self.push(format!("f64.const {}", val).as_str()),
                 Instruction::Var { reg, .. } => {
                     self.push(format!("(f64.load (i32.const {}))", 8 * reg.0).as_str())
                 }
@@ -181,7 +178,6 @@ impl Compiler<WasmCode> for WasmCompiler {
         WasmCode::new(self.buf.clone(), prog.frame.mem()).unwrap()
     }
 }
-
 
 type HostState = u32;
 
@@ -202,20 +198,15 @@ impl WasmCode {
         let engine = Engine::default();
         let module = Module::new(&engine, wat.as_str())?;
         let mut linker = Linker::<HostState>::new(&engine);
-        
+
         Self::imports(&mut linker).expect("error in importing functions to wasm");
-        
+
         let mut store: Store<HostState> = Store::new(&engine, 0);
         let instance = linker.instantiate(&mut store, &module)?;
         let run = instance.get_typed_func::<(), ()>(&mut store, "run")?;
-
-
-        let instance = linker.instantiate(&mut store, &module)?;
-
-        let run = instance.get_typed_func::<(), ()>(&mut store, "run")?;
         let mut memory = instance.get_memory(&mut store, "memory").unwrap();
-        
-        let p: &mut [f64] = unsafe{ std::mem::transmute(memory.data_mut(&mut store)) };
+
+        let p: &mut [f64] = unsafe { std::mem::transmute(memory.data_mut(&mut store)) };
         let _ = p[.._mem.len()].copy_from_slice(&_mem[..]);
 
         let wasm = WasmCode {
@@ -260,15 +251,13 @@ impl Compiled for WasmCode {
 
     #[inline]
     fn mem(&self) -> &[f64] {
-        let p: &[f64] = unsafe{ std::mem::transmute(self.memory.data(&self.store)) };
+        let p: &[f64] = unsafe { std::mem::transmute(self.memory.data(&self.store)) };
         p
     }
 
     #[inline]
     fn mem_mut(&mut self) -> &mut [f64] {
-        let p: &mut [f64] = unsafe{ std::mem::transmute(self.memory.data_mut(&mut self.store)) };
+        let p: &mut [f64] = unsafe { std::mem::transmute(self.memory.data_mut(&mut self.store)) };
         p
     }
 }
-
-

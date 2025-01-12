@@ -26,7 +26,7 @@ impl RegType {
             RegType::State(_, val) => Some(*val),
             RegType::Param(_, val) => Some(*val),
             RegType::Const(val) => Some(*val),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -34,7 +34,7 @@ impl RegType {
 // The register file
 #[derive(Debug)]
 pub struct Frame {
-    pub regs: Vec<(RegType)>,
+    pub regs: Vec<RegType>,
     pub named: HashMap<String, usize>,
     pub freed: Vec<Reg>,
 }
@@ -54,24 +54,16 @@ impl Frame {
 
         f
     }
-    
+
     fn alloc_temp(&mut self) -> Reg {
         if !self.freed.is_empty() {
             let k = {
-                let m = self
-                    .freed
-                    .iter()                        
-                    .min_by_key(|x| x.0)
-                    .unwrap();
-                self
-                    .freed
-                    .iter()
-                    .position(|x| x == m)
-                    .unwrap()
+                let m = self.freed.iter().min_by_key(|x| x.0).unwrap();
+                self.freed.iter().position(|x| x == m).unwrap()
             };
             return self.freed.remove(k);
         };
-        
+
         let idx = self.regs.len();
         self.regs.push(RegType::Temp);
         Reg(idx)
@@ -79,14 +71,13 @@ impl Frame {
 
     pub fn alloc(&mut self, t: RegType) -> Reg {
         let idx = self.regs.len();
-        
+
         match &t {
-            RegType::Temp => { return self.alloc_temp(); }
+            RegType::Temp => {
+                return self.alloc_temp();
+            }
             RegType::Const(_) => {}
-            RegType::Var(s)
-            | RegType::State(s, _)
-            | RegType::Param(s, _)
-            | RegType::Obs(s) => {
+            RegType::Var(s) | RegType::State(s, _) | RegType::Param(s, _) | RegType::Obs(s) => {
                 self.named
                     .insert(s.clone(), idx)
                     .map(|_x| panic!("key already exists"));
@@ -116,7 +107,7 @@ impl Frame {
             false
         }
     }
-    
+
     pub fn is_temp(&self, r: &Reg) -> bool {
         if let RegType::Temp = self.regs[r.0] {
             true
@@ -128,7 +119,7 @@ impl Frame {
     pub fn find(&self, s: &str) -> Option<Reg> {
         self.named.get(s).map(|idx| Reg(*idx))
     }
-    
+
     pub fn find_diff(&self, s: &str) -> Option<Reg> {
         let s = format!("δ{}", s);
         self.find(s.as_str())
@@ -174,7 +165,7 @@ impl Frame {
             .position(|x| matches!(x, RegType::Param(_, _)))
     }
 
-    pub fn mem(&self) -> Vec<f64> {        
+    pub fn mem(&self) -> Vec<f64> {
         self.regs
             .iter()
             .map(|x| x.value().unwrap_or(0.0))
@@ -185,5 +176,3 @@ impl Frame {
         Ok(serde_json::to_string(&self.regs)?)
     }
 }
-
-

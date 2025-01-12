@@ -26,7 +26,7 @@ fn solve(r: &mut Runnable) {
     let p = r.params();
     let alg = Euler::new(0.02, 50);
     //let sol = alg.solve(r, u0.clone(), p.clone(), 0.0..1000.0);
-    
+
     let now = Instant::now();
     // let alg = Euler::new(0.001, 10);
     let sol = alg.solve(r, u0, p, 0.0..5000.0);
@@ -50,21 +50,21 @@ fn main() {
 
     let text = fs::read_to_string(args[2].as_str()).unwrap();
     let ml = CellModel::load(&text).unwrap();
-    let prog = Program::new(&ml);
-    
-    println!("{:#?}", &prog);
-    println!("running...");
 
-    let ty = match args[1].as_str() {
-        "bytecode" => CompilerType::ByteCode,
-        "native" => CompilerType::Native,
-        "wasm" => CompilerType::Wasm,
+    // println!("{:#?}", &prog);
+    // println!("running...");
+
+    let (ty, reuse) = match args[1].as_str() {
+        "bytecode" => (CompilerType::ByteCode, true),
+        "native" => (CompilerType::Native, false),
+        "wasm" => (CompilerType::Wasm, true),
         _ => {
             println!("compiler type should be one of bytecode, native, or wasm");
             std::process::exit(0);
         }
     };
 
+    let prog = Program::new(&ml, reuse);
     let mut r = Runnable::new(prog, ty);
     solve(&mut r);
 }

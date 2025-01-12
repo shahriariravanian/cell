@@ -15,10 +15,11 @@ pub struct Program {
     pub code: Vec<Instruction>, // the list of instructions
     pub frame: Frame,           // memory (states, registers, constants, ...)
     pub ft: Vec<String>,        // function table (used to generate a virtual table)
+    pub reuse: bool,
 }
 
 impl Program {
-    pub fn new(ml: &CellModel) -> Program {
+    pub fn new(ml: &CellModel, reuse: bool) -> Program {
         let mut frame = Frame::new();
 
         frame.alloc(RegType::Var(ml.iv.name.clone()));
@@ -39,6 +40,7 @@ impl Program {
             code: Vec::new(),
             frame,
             ft: Vec::new(),
+            reuse,
         };
 
         ml.lower(&mut prog);
@@ -52,7 +54,7 @@ impl Program {
     pub fn push(&mut self, s: Instruction) {
         self.code.push(s)
     }
-    
+
     pub fn pop(&mut self) {
         let _ = self.code.pop();
     }
@@ -67,7 +69,7 @@ impl Program {
         };
         Proc(p)
     }
-    
+
     pub fn push_eq(&mut self, dst: Reg) {
         self.code.push(Instruction::Eq { dst })
     }
@@ -116,7 +118,9 @@ impl Program {
     }
 
     pub fn free(&mut self, r: Reg) {
-        self.frame.free(r)
+        if self.reuse {
+            self.frame.free(r);
+        }
     }
 
     pub fn reg(&self, name: &str) -> Reg {
@@ -187,24 +191,24 @@ impl Expr {
 
     fn lower_binary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
         if op == "times" {
-            return self.lower_times(prog, args)
+            return self.lower_times(prog, args);
         }
-    
-        let x = args[0].lower(prog);        
+
+        let x = args[0].lower(prog);
         let y = args[1].lower(prog);
         let dst = prog.alloc_temp();
-        
+
         prog.push_binary(op, x, y, dst);
         prog.free(y);
         prog.free(x);
-        
+
         dst
     }
-    
-    fn lower_times(&self, prog: &mut Program, args: &Vec<Expr>) -> Reg {    
+
+    fn lower_times(&self, prog: &mut Program, args: &Vec<Expr>) -> Reg {
         let x = args[0].lower(prog);
         let dst = prog.alloc_temp();
-        
+
         if x == Reg(2) {
             prog.pop();
             let y = args[1].lower(prog);
@@ -219,19 +223,18 @@ impl Expr {
                 prog.push_binary("times", x, y, dst);
             };
             prog.free(y);
-        }        
-        
+        }
+
         prog.free(x);
-        
+
         dst
     }
-
 
     fn lower_ternary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
         if op != "ifelse" {
             return self.lower_poly(prog, op, args);
         }
-        
+
         let x1 = args[1].lower(prog);
         let x2 = args[2].lower(prog);
         let cond = args[0].lower(prog);
@@ -241,7 +244,7 @@ impl Expr {
 
         prog.free(cond);
         prog.free(x2);
-        prog.free(x1);        
+        prog.free(x1);
 
         dst
     }
@@ -278,8 +281,8 @@ impl Lower for Expr {
                     Reg(1)
                 } else if *val == -1.0 {
                     Reg(2)
-                } else {                
-                
+                } else {
+
                     // let dst = prog.alloc_temp();
                     let dst = prog.alloc_const(*val);
                     prog.push(Instruction::Num { val: *val, dst }); // not needed for code generation, useful for debugging
@@ -292,12 +295,11 @@ impl Lower for Expr {
                     Reg(1)
                 } else if *val == -1.0 {
                     Reg(2)
-                } else {                                    
+                } else {
                     prog.alloc_const(*val)
                 };
                 prog.push(Instruction::Num { val: *val, dst });
                 dst
-                
             }
             Expr::Var { name } => {
                 // Technically, this is not necessary but having Instruction::Var in the code
@@ -337,9 +339,9 @@ impl Lower for Equation {
         } else {
             panic!("undefined diff variable");
         };
-        
+
         prog.push_eq(dst);
-        
+
         let src = self.rhs.lower(prog);
 
         prog.push_unary("mov", src, dst);

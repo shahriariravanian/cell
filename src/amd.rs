@@ -11,7 +11,9 @@ use crate::utils::*;
 
 #[derive(Debug)]
 pub struct NativeCompiler {
-    buf: Vec<u8>,
+    machine_code: Vec<u8>,
+    x4: Option<Reg>,
+    x5: Option<Reg>,
 }
 
 #[derive(Debug)]
@@ -41,17 +43,29 @@ impl NativeCompiler {
     const RBP: u8 = 5;
     const RSI: u8 = 6;
     const RDI: u8 = 7;
+    const R8: u8 = 8;
+    const R9: u8 = 9;
+    const R10: u8 = 10;
+    const R11: u8 = 11;
+    const R12: u8 = 12;
+    const R13: u8 = 13;
+    const R14: u8 = 14;
+    const R15: u8 = 15;
 
     pub fn new() -> NativeCompiler {
-        Self { buf: Vec::new() }
+        Self {
+            machine_code: Vec::new(),
+            x4: None,
+            x5: None,
+        }
     }
 
     fn byte(&mut self, b: u8) {
-        self.buf.push(b);
+        self.machine_code.push(b);
     }
 
     fn bytes(&mut self, bs: &[u8]) {
-        self.buf.extend_from_slice(bs);
+        self.machine_code.extend_from_slice(bs);
     }
 
     fn op_code(&mut self, op: &str, p: Proc) {
@@ -71,12 +85,13 @@ impl NativeCompiler {
             "or" => self.or(Self::XMM0, Self::XMM1),
             "xor" => self.xor(Self::XMM0, Self::XMM1),
             "neg" => {
-                self.load_xmm_reg(Self::XMM1, Reg(3));
+                self.load_xmm_indirect(Self::XMM1, Reg(3));
                 self.xor(Self::XMM0, Self::XMM1);
             }
             _ => {
                 // println!("{:x}:\t{}", self.buf.len(), op);
-                self.load_reg(Self::RAX, Self::RBX, 8 * p.0); // mov    rax,QWORD PTR [rbx+8*f]
+                self.dump_buffer();
+                self.load_reg_indirect(Self::RAX, Self::RBX, 8 * p.0); // mov    rax,QWORD PTR [rbx+8*f]
                 self.call_reg(Self::RAX); // call   rax
             }
         }
@@ -146,12 +161,27 @@ impl NativeCompiler {
         self.modrm_reg(src, dst);
     }
 
+    fn sqrt(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0xf2, 0x0f, 0x51]);
+        self.modrm_reg(src, dst);
+    }
+
     fn push_reg(&mut self, r: u8) {
-        self.byte(0x50 + r);
+        if r < 8 {
+            self.byte(0x50 + r);
+        } else {
+            self.byte(0x41);
+            self.byte(0x48 + r);
+        }
     }
 
     fn pop_reg(&mut self, r: u8) {
-        self.byte(0x58 + r);
+        if r < 8 {
+            self.byte(0x58 + r);
+        } else {
+            self.byte(0x41);
+            self.byte(0x50 + r);
+        }
     }
 
     fn ret(&mut self) {
@@ -187,9 +217,15 @@ impl NativeCompiler {
         }
     }
 
-    fn load_reg(&mut self, r: u8, base: u8, offset: usize) {
+    fn load_reg_indirect(&mut self, r: u8, base: u8, offset: usize) {
         self.byte(0x48); // REX
         self.byte(0x8b); // MOV
+        self.modrm_mem(r, base, offset);
+    }
+
+    fn save_reg_indirect(&mut self, r: u8, base: u8, offset: usize) {
+        self.byte(0x48); // REX
+        self.byte(0x89); // MOV
         self.modrm_mem(r, base, offset);
     }
 
@@ -198,32 +234,40 @@ impl NativeCompiler {
         self.modrm_reg(src, dst);
     }
 
-    fn load_xmm_reg(&mut self, r: u8, x: Reg) {
-        if x == Reg(0) {
-            self.xor(r, r);
+    // movq XMM[dst], GP[src]
+    fn move_xmm_reg(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0x66, 0x48 | (src >> 3), 0x0f, 0x6e]);
+        self.modrm_reg(src & 7, dst);
+    }
+
+    // movq GP[dst], XMM[src]
+    fn move_reg_xmm(&mut self, dst: u8, src: u8) {
+        self.bytes(&[0x66, 0x48 | (dst >> 3), 0x0f, 0x7e]);
+        self.modrm_reg(dst & 7, src);
+    }
+
+    fn load_xmm_indirect(&mut self, x: u8, r: Reg) {
+        if r == Reg(0) {
+            self.xor(x, x);
         } else {
-            self.load_xmm(r, Self::RBP, 8 * x.0);
+            self.load_xmm(x, Self::RBP, 8 * r.0);
         }
     }
 
-    fn save_xmm_reg(&mut self, r: u8, x: Reg) {
-        if x.0 > 2 {
-            self.save_xmm(r, Self::RBP, 8 * x.0);
+    fn save_xmm_indirect(&mut self, x: u8, r: Reg) {
+        if r.0 > 2 {
+            self.save_xmm(x, Self::RBP, 8 * r.0);
         }
     }
 
-    fn load_xmm(&mut self, r: u8, base: u8, offset: usize) {
-        self.byte(0xf2);
-        self.byte(0x0f);
-        self.byte(0x10);
-        self.modrm_mem(r, base, offset);
+    fn load_xmm(&mut self, x: u8, base: u8, offset: usize) {
+        self.bytes(&[0xf2, 0x0f, 0x10]);
+        self.modrm_mem(x, base, offset);
     }
 
-    fn save_xmm(&mut self, r: u8, base: u8, offset: usize) {
-        self.byte(0xf2);
-        self.byte(0x0f);
-        self.byte(0x11);
-        self.modrm_mem(r, base, offset);
+    fn save_xmm(&mut self, x: u8, base: u8, offset: usize) {
+        self.bytes(&[0xf2, 0x0f, 0x11]);
+        self.modrm_mem(x, base, offset);
     }
 
     fn find_saveables(&self, prog: &Program) -> HashSet<Reg> {
@@ -266,6 +310,50 @@ impl NativeCompiler {
 
         saveables
     }
+
+    fn load_buffered(&mut self, x: u8, r: Reg) {
+        if self.x4.is_some_and(|s| s == r) {
+            self.move_xmm(x, Self::XMM4);
+            self.x4 = None;
+            return;
+        }
+
+        if self.x5.is_some_and(|s| s == r) {
+            self.move_xmm(x, Self::XMM5);
+            self.x5 = None;
+            return;
+        }
+
+        self.load_xmm_indirect(x, r);
+    }
+
+    fn save_buffered(&mut self, x: u8, r: Reg) {
+        if self.x4.is_none() {
+            self.move_xmm(Self::XMM4, x);
+            self.x4 = Some(r);
+            return;
+        }
+
+        if self.x5.is_none() {
+            self.move_xmm(Self::XMM5, x);
+            self.x5 = Some(r);
+            return;
+        }
+
+        self.save_xmm_indirect(x, r);
+    }
+
+    fn dump_buffer(&mut self) {
+        if let Some(s) = self.x4 {
+            self.save_xmm_indirect(Self::XMM4, s);
+            self.x4 = None;
+        }
+
+        if let Some(s) = self.x5 {
+            self.save_xmm_indirect(Self::XMM5, s);
+            self.x5 = None;
+        }
+    }
 }
 
 impl Compiler<MachineCode> for NativeCompiler {
@@ -284,20 +372,27 @@ impl Compiler<MachineCode> for NativeCompiler {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
                     if r != *x {
-                        self.load_xmm_reg(Self::XMM0, *x);
+                        self.load_buffered(Self::XMM0, *x);
                     };
                     self.op_code(&op, *p);
                     r = *dst;
                 }
                 Instruction::Binary { p, x, y, dst, op } => {
+                    // commutative operators
+                    let (x, y) = if (op == "plus" || op == "times") && *y == r {
+                        (y, x)
+                    } else {
+                        (x, y)
+                    };
+
                     if *y == r {
                         self.move_xmm(Self::XMM1, Self::XMM0);
                     } else {
-                        self.load_xmm_reg(Self::XMM1, *y);
+                        self.load_buffered(Self::XMM1, *y);
                     }
 
                     if *x != r {
-                        self.load_xmm_reg(Self::XMM0, *x);
+                        self.load_buffered(Self::XMM0, *x);
                     }
 
                     self.op_code(&op, *p);
@@ -307,29 +402,35 @@ impl Compiler<MachineCode> for NativeCompiler {
                     if *cond == r {
                         self.move_xmm(Self::XMM2, Self::XMM0);
                     } else {
-                        self.load_xmm_reg(Self::XMM2, *cond);
+                        self.load_buffered(Self::XMM2, *cond);
                     }
-                
+
                     if *x2 == r {
                         self.move_xmm(Self::XMM1, Self::XMM0);
                     } else {
-                        self.load_xmm_reg(Self::XMM1, *x2);
+                        self.load_buffered(Self::XMM1, *x2);
                     }
 
                     if *x1 != r {
-                        self.load_xmm_reg(Self::XMM0, *x1);
+                        self.load_buffered(Self::XMM0, *x1);
                     }
 
                     self.ifelse();
                     r = *dst;
                 }
-                _ => {}
+                _ => {
+                    continue;
+                }
             }
 
             // only save the result if it is part of the function output (is_diff)
             // or is needed by instructions after the immediate next one
-            if prog.frame.is_diff(&r) || saveables.contains(&r) {
-                self.save_xmm_reg(Self::XMM0, r);
+            if prog.frame.is_diff(&r) {
+                self.save_xmm_indirect(Self::XMM0, r);
+                r = Reg(0);
+            } else if saveables.contains(&r) {
+                self.save_buffered(Self::XMM0, r);
+                r = Reg(0);
             }
         }
 
@@ -338,7 +439,7 @@ impl Compiler<MachineCode> for NativeCompiler {
         self.pop_reg(Self::RBP); // pop    rbp
         self.ret(); // ret
 
-        MachineCode::new(&self.buf, prog.virtual_table(), prog.frame.mem())
+        MachineCode::new(&self.machine_code, prog.virtual_table(), prog.frame.mem())
     }
 }
 
@@ -353,9 +454,9 @@ pub struct MachineCode {
 }
 
 impl MachineCode {
-    fn new(buf: &Vec<u8>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> MachineCode {
+    fn new(machine_code: &Vec<u8>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> MachineCode {
         let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 16) + ".bin";
-        MachineCode::write_buf(buf, &name);
+        MachineCode::write_buf(machine_code, &name);
         let fs = fs::File::open(&name).unwrap();
         let mmap = unsafe { MmapOptions::new().map_exec(&fs).unwrap() };
         let p = mmap.as_ptr() as *const u8;
@@ -370,9 +471,9 @@ impl MachineCode {
         }
     }
 
-    fn write_buf(buf: &Vec<u8>, name: &str) {
+    fn write_buf(machine_code: &Vec<u8>, name: &str) {
         let mut fs = fs::File::create(name).unwrap();
-        fs.write(buf).unwrap();
+        fs.write(machine_code).unwrap();
     }
 }
 
