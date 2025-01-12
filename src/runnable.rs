@@ -26,7 +26,7 @@ impl Runnable {
     pub fn new(prog: Program, ty: CompilerType) -> Runnable {
         let compiled: Box<dyn Compiled> = match ty {
             CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
-            CompilerType::Native => Box::new(NativeCompiler::new().compile(&prog)),
+            CompilerType::Native => Box::new(NativeCompiler::new(false).compile(&prog)),
             CompilerType::Wasm => Box::new(WasmCompiler::new().compile(&prog)),
         };
 

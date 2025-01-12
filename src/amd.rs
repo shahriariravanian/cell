@@ -12,8 +12,15 @@ use crate::utils::*;
 #[derive(Debug)]
 pub struct NativeCompiler {
     machine_code: Vec<u8>,
+    optimize: bool,
     x4: Option<Reg>,
     x5: Option<Reg>,
+}
+
+pub enum Linear {
+    Producer(Reg),
+    Consumer(Reg),
+    Caller(String),
 }
 
 #[derive(Debug)]
@@ -52,11 +59,12 @@ impl NativeCompiler {
     const R14: u8 = 14;
     const R15: u8 = 15;
 
-    pub fn new() -> NativeCompiler {
+    pub fn new(optimize: bool) -> NativeCompiler {
         Self {
             machine_code: Vec::new(),
             x4: None,
             x5: None,
+            optimize
         }
     }
 
@@ -88,9 +96,10 @@ impl NativeCompiler {
                 self.load_xmm_indirect(Self::XMM1, Reg(3));
                 self.xor(Self::XMM0, Self::XMM1);
             }
-            _ => {
-                // println!("{:x}:\t{}", self.buf.len(), op);
-                self.dump_buffer();
+            _ => {                
+                if !self.optimize {
+                    self.dump_buffer();
+                }
                 self.load_reg_indirect(Self::RAX, Self::RBX, 8 * p.0); // mov    rax,QWORD PTR [rbx+8*f]
                 self.call_reg(Self::RAX); // call   rax
             }
@@ -269,46 +278,103 @@ impl NativeCompiler {
         self.bytes(&[0xf2, 0x0f, 0x11]);
         self.modrm_mem(x, base, offset);
     }
-
-    fn find_saveables(&self, prog: &Program) -> HashSet<Reg> {
-        let mut saveables: HashSet<Reg> = HashSet::new();
-
-        let mut r = Reg(0);
-
+    
+    fn linearize(&self, prog: &Program) -> Vec<Linear> {
+        let mut linear: Vec<Linear> = Vec::new();
+        
         for c in prog.code.iter() {
             match c {
-                Instruction::Unary { x, dst, .. } => {
-                    if *x != r {
-                        saveables.insert(*x);
-                    }
-                    r = *dst;
+                Instruction::Unary { op, x, dst, .. } => {
+                    linear.push(Linear::Consumer(*x));                    
+                    linear.push(Linear::Caller(op.clone()));
+                    linear.push(Linear::Producer(*dst));
                 }
-                Instruction::Binary { x, y, dst, .. } => {
-                    if *x != r {
-                        saveables.insert(*x);
-                    }
-                    if *y != r {
-                        saveables.insert(*y);
-                    }
-                    r = *dst;
+                Instruction::Binary { op, x, y, dst, .. } => {
+                    linear.push(Linear::Consumer(*x));
+                    linear.push(Linear::Consumer(*y));
+                    linear.push(Linear::Caller(op.clone()));
+                    linear.push(Linear::Producer(*dst));
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
-                    if *x1 != r {
-                        saveables.insert(*x1);
-                    }
-                    if *x2 != r {
-                        saveables.insert(*x2);
-                    }
-                    if *cond != r {
-                        saveables.insert(*cond);
-                    }
-                    r = *dst;
+                    linear.push(Linear::Consumer(*x1));
+                    linear.push(Linear::Consumer(*x2));                    
+                    linear.push(Linear::Consumer(*cond));                    
+                    linear.push(Linear::Caller("select".to_string()));
+                    linear.push(Linear::Producer(*dst));
                 }
                 _ => {}
             }
+        };
+        linear
+    }
+
+    /*
+        A saveable register is produced but is not consumed immediately
+        In other words, it cannot be coalesced over consecuative instructions
+    */
+    fn find_saveables(&self, linear: &Vec<Linear>) -> HashSet<Reg> {
+        let mut candidates: Vec<Reg> = Vec::new();
+        let mut saveables: HashSet<Reg> = HashSet::new();        
+
+        for l in linear.iter() {
+            match l {
+                Linear::Producer(p) => { 
+                    candidates.push(*p);
+                },
+                Linear::Consumer(c) => {       
+                    let r = candidates.pop();
+                    if candidates.contains(c) {
+                        saveables.insert(*c);
+                    }; 
+                    if r.is_some() {
+                        candidates.push(r.unwrap());
+                    };                    
+                },
+                Linear::Caller(_) => {}
+            }        
         }
 
         saveables
+    }
+    
+    /*
+        A bufferable register is a saveable register that its lifetime 
+        does not cross an external call boundary, which can invalidate
+        the buffer
+    */
+    fn find_bufferable(&self, linear: &Vec<Linear>) -> HashSet<Reg> {
+        let caller = ["rem", "power", 
+                      "sin", "cos", "tan", 
+                      "csc", "sec", "cot", 
+                      "arcsin", "arccos", "arctan", 
+                      "exp", "ln", "log", "root"];
+        
+        let mut candidates: Vec<Reg> = Vec::new();
+        let mut bufferable: HashSet<Reg> = HashSet::new();        
+
+        for l in linear.iter() {
+            match l {
+                Linear::Producer(p) => { 
+                    candidates.push(*p);
+                },
+                Linear::Consumer(c) => {       
+                    let r = candidates.pop();
+                    if candidates.contains(c) {
+                        bufferable.insert(*c);
+                    }; 
+                    if r.is_some() {
+                        candidates.push(r.unwrap());
+                    };                    
+                },
+                Linear::Caller(op) => {
+                    if caller.contains(&op.as_str()) {
+                        candidates.clear();
+                    }
+                }
+            }        
+        }
+
+        bufferable
     }
 
     fn load_buffered(&mut self, x: u8, r: Reg) {
@@ -366,7 +432,15 @@ impl Compiler<MachineCode> for NativeCompiler {
         self.move_reg(Self::RBX, Self::RDX); // mov    rbx,rdx
 
         let mut r = Reg(0);
-        let saveables = self.find_saveables(prog);
+        
+        let linear = self.linearize(prog);
+        let saveables = self.find_saveables(&linear);
+        
+        let bufferable: HashSet<Reg> = if self.optimize {
+            self.find_bufferable(&linear)
+        } else {
+            HashSet::new()
+        };
 
         for c in prog.code.iter() {
             match c {
@@ -423,13 +497,29 @@ impl Compiler<MachineCode> for NativeCompiler {
                 }
             }
 
-            // only save the result if it is part of the function output (is_diff)
-            // or is needed by instructions after the immediate next one
+            // A diff register should be saved, cannot be buffered
             if prog.frame.is_diff(&r) {
                 self.save_xmm_indirect(Self::XMM0, r);
                 r = Reg(0);
-            } else if saveables.contains(&r) {
+            }
+            
+            
+            // A bufferable register can be buffered without the
+            // need for self.dump_buffer()            
+            if self.optimize && bufferable.contains(&r) {
                 self.save_buffered(Self::XMM0, r);
+                r = Reg(0);
+            }            
+            
+            // A saveable register can be saved directly or buffered
+            // However, if it is buffered, self.dump_buffer() should be
+            // uncommented in fn op_code
+            if saveables.contains(&r) {            
+                if self.optimize {
+                    self.save_xmm_indirect(Self::XMM0, r);
+                } else {
+                    self.save_buffered(Self::XMM0, r);
+                }
                 r = Reg(0);
             }
         }
@@ -496,6 +586,6 @@ impl Compiled for MachineCode {
 
 impl Drop for MachineCode {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.name);
+        // let _ = fs::remove_file(&self.name);
     }
 }

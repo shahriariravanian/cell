@@ -115,6 +115,14 @@ impl Frame {
             false
         }
     }
+    
+    pub fn is_obs(&self, r: &Reg) -> bool {
+        if let RegType::Obs(_) = self.regs[r.0] {
+            true
+        } else {
+            false
+        }
+    }
 
     pub fn find(&self, s: &str) -> Option<Reg> {
         self.named.get(s).map(|idx| Reg(*idx))
