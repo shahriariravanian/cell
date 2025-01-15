@@ -1,4 +1,4 @@
-use crate::register::Reg;
+use crate::register::Word;
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Proc(pub usize);
@@ -7,33 +7,33 @@ pub struct Proc(pub usize);
 pub enum Instruction {
     Unary {
         op: String,
-        x: Reg,
-        dst: Reg,
+        x: Word,
+        dst: Word,
         p: Proc,
     },
     Binary {
         op: String,
-        x: Reg,
-        y: Reg,
-        dst: Reg,
+        x: Word,
+        y: Word,
+        dst: Word,
         p: Proc,
     },
     IfElse {
-        x1: Reg,
-        x2: Reg,
-        cond: Reg,
-        dst: Reg,
+        x1: Word,
+        x2: Word,
+        cond: Word,
+        dst: Word,
     },
     Num {
         val: f64,
-        dst: Reg,
+        dst: Word,
     },
     Var {
         name: String,
-        reg: Reg,
+        reg: Word,
     },
     Eq {
-        dst: Reg,
+        dst: Word,
     },
     Nop,
 }

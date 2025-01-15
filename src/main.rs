@@ -4,6 +4,7 @@ use std::io::{BufWriter, Write};
 use std::time::Instant;
 
 mod amd;
+mod assembler;
 mod code;
 mod interpreter;
 mod model;

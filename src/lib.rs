@@ -1,6 +1,7 @@
 use std::ffi::{c_char, CStr, CString};
 
 mod amd;
+mod assembler;
 mod code;
 mod interpreter;
 mod model;

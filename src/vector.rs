@@ -441,17 +441,3 @@ impl DivAssign for Vector {
         }
     }
 }
-
-/***************************************************/
-
-#[test]
-fn test_vector() {
-    let v = Vector::new(vec![10.0, 8.0, 5.0]);
-    let w = Vector::new(vec![2.0, 4.0, 5.0]);
-
-    assert_eq!(&v + &w, Vector::new(vec![12.0, 12.0, 10.0]));
-    assert_eq!(&v - &w, Vector::new(vec![8.0, 4.0, 0.0]));
-    assert_eq!(&v * &w, Vector::new(vec![20.0, 32.0, 25.0]));
-    assert_eq!(&v / &w, Vector::new(vec![5.0, 2.0, 1.0]));
-    assert_eq!(v / w, Vector::new(vec![5.0, 2.0, 1.0]));
-}

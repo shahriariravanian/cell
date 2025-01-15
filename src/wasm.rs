@@ -4,7 +4,7 @@ use wasmtime::*;
 
 use crate::code::*;
 use crate::model::Program;
-use crate::register::Reg;
+use crate::register::Word;
 use crate::utils::*;
 
 #[derive(Debug, Copy, Clone)]
@@ -24,10 +24,10 @@ enum OpType {
 #[derive(Debug, Clone)]
 struct Op {
     op: String,
-    x: Option<Reg>,
-    y: Option<Reg>,
-    z: Option<Reg>,
-    dst: Option<Reg>,
+    x: Option<Word>,
+    y: Option<Word>,
+    z: Option<Word>,
+    dst: Option<Word>,
     store: bool,
 }
 
@@ -204,7 +204,7 @@ impl WasmCode {
         let mut store: Store<HostState> = Store::new(&engine, 0);
         let instance = linker.instantiate(&mut store, &module)?;
         let run = instance.get_typed_func::<(), ()>(&mut store, "run")?;
-        let mut memory = instance.get_memory(&mut store, "memory").unwrap();
+        let memory = instance.get_memory(&mut store, "memory").unwrap();
 
         let p: &mut [f64] = unsafe { std::mem::transmute(memory.data_mut(&mut store)) };
         let _ = p[.._mem.len()].copy_from_slice(&_mem[..]);

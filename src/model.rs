@@ -6,7 +6,7 @@ use crate::register::*;
 
 // lowers Expr and its constituents into a three-address_code format
 pub trait Lower {
-    fn lower(&self, prog: &mut Program) -> Reg;
+    fn lower(&self, prog: &mut Program) -> Word;
 }
 
 // collects instructions and registers
@@ -22,18 +22,18 @@ impl Program {
     pub fn new(ml: &CellModel, reuse: bool) -> Program {
         let mut frame = Frame::new();
 
-        frame.alloc(RegType::Var(ml.iv.name.clone()));
+        frame.alloc(WordType::Var(ml.iv.name.clone()));
 
         for v in &ml.states {
-            frame.alloc(RegType::State(v.name.clone(), v.val));
+            frame.alloc(WordType::State(v.name.clone(), v.val));
         }
 
         for v in &ml.states {
-            frame.alloc(RegType::Diff(v.name.clone()));
+            frame.alloc(WordType::Diff(v.name.clone()));
         }
 
         for v in &ml.params {
-            frame.alloc(RegType::Param(v.name.clone(), v.val));
+            frame.alloc(WordType::Param(v.name.clone(), v.val));
         }
 
         let mut prog = Program {
@@ -70,12 +70,12 @@ impl Program {
         Proc(p)
     }
 
-    pub fn push_eq(&mut self, dst: Reg) {
+    pub fn push_eq(&mut self, dst: Word) {
         self.code.push(Instruction::Eq { dst })
     }
 
     // pushes an Op into code and adjusts the virtual table accordingly
-    pub fn push_unary(&mut self, op: &str, x: Reg, dst: Reg) {
+    pub fn push_unary(&mut self, op: &str, x: Word, dst: Word) {
         let p = self.proc(op);
 
         self.code.push(Instruction::Unary {
@@ -86,7 +86,7 @@ impl Program {
         })
     }
 
-    pub fn push_binary(&mut self, op: &str, x: Reg, y: Reg, dst: Reg) {
+    pub fn push_binary(&mut self, op: &str, x: Word, y: Word, dst: Word) {
         let p = self.proc(op);
 
         self.code.push(Instruction::Binary {
@@ -98,36 +98,36 @@ impl Program {
         })
     }
 
-    pub fn push_ifelse(&mut self, x1: Reg, x2: Reg, cond: Reg, dst: Reg) {
+    pub fn push_ifelse(&mut self, x1: Word, x2: Word, cond: Word, dst: Word) {
         self.code.push(Instruction::IfElse { x1, x2, cond, dst })
     }
 
     // allocates a constant register
-    pub fn alloc_const(&mut self, val: f64) -> Reg {
-        self.frame.alloc(RegType::Const(val))
+    pub fn alloc_const(&mut self, val: f64) -> Word {
+        self.frame.alloc(WordType::Const(val))
     }
 
     // allocates a temporary register
-    pub fn alloc_temp(&mut self) -> Reg {
-        self.frame.alloc(RegType::Temp)
+    pub fn alloc_temp(&mut self) -> Word {
+        self.frame.alloc(WordType::Temp)
     }
 
     // allocates an obeservable register
-    pub fn alloc_obs(&mut self, name: &str) -> Reg {
-        self.frame.alloc(RegType::Obs(name.to_string()))
+    pub fn alloc_obs(&mut self, name: &str) -> Word {
+        self.frame.alloc(WordType::Obs(name.to_string()))
     }
 
-    pub fn free(&mut self, r: Reg) {
+    pub fn free(&mut self, r: Word) {
         if self.reuse {
             self.frame.free(r);
         }
     }
 
-    pub fn reg(&self, name: &str) -> Reg {
+    pub fn reg(&self, name: &str) -> Word {
         self.frame.find(name).expect("cannot find reg by name")
     }
 
-    pub fn reg_diff(&self, name: &str) -> Reg {
+    pub fn reg_diff(&self, name: &str) -> Word {
         self.frame.find_diff(name).expect("cannot find reg by name")
     }
 
@@ -145,7 +145,7 @@ pub struct Variable {
 }
 
 impl Lower for Variable {
-    fn lower(&self, prog: &mut Program) -> Reg {
+    fn lower(&self, prog: &mut Program) -> Word {
         prog.reg(&self.name)
     }
 }
@@ -181,7 +181,7 @@ impl Expr {
         None
     }
 
-    fn lower_unary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
+    fn lower_unary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Word {
         let x = args[0].lower(prog);
         let dst = prog.alloc_temp();
         prog.push_unary(op, x, dst);
@@ -189,7 +189,7 @@ impl Expr {
         dst
     }
 
-    fn lower_binary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
+    fn lower_binary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Word {
         if op == "times" {
             return self.lower_times(prog, args);
         }
@@ -205,18 +205,18 @@ impl Expr {
         dst
     }
 
-    fn lower_times(&self, prog: &mut Program, args: &Vec<Expr>) -> Reg {
+    fn lower_times(&self, prog: &mut Program, args: &Vec<Expr>) -> Word {
         let x = args[0].lower(prog);
         let dst = prog.alloc_temp();
 
-        if x == Reg(2) {
+        if x == Word(2) {
             prog.pop();
             let y = args[1].lower(prog);
             prog.push_unary("neg", y, dst);
             prog.free(y);
         } else {
             let y = args[1].lower(prog);
-            if y == Reg(2) {
+            if y == Word(2) {
                 prog.pop();
                 prog.push_unary("neg", x, dst);
             } else {
@@ -230,7 +230,7 @@ impl Expr {
         dst
     }
 
-    fn lower_ternary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
+    fn lower_ternary(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Word {
         if op != "ifelse" {
             return self.lower_poly(prog, op, args);
         }
@@ -249,7 +249,7 @@ impl Expr {
         dst
     }
 
-    fn lower_poly(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Reg {
+    fn lower_poly(&self, prog: &mut Program, op: &str, args: &Vec<Expr>) -> Word {
         if !(op == "plus" || op == "times") {
             panic!("missing op: {}", op);
         }
@@ -268,19 +268,19 @@ impl Expr {
 }
 
 impl Lower for Expr {
-    fn lower(&self, prog: &mut Program) -> Reg {
+    fn lower(&self, prog: &mut Program) -> Word {
         match self {
             Expr::Const { val } => {
                 // Optimization!
-                // we assume that the value of Reg(0) is 0.0, Reg(1) is 1,
-                // and Reg(2) is -1
+                // we assume that the value of Word(0) is 0.0, Word(1) is 1,
+                // and Word(2) is -1
                 /*
                 if *val == 0.0 {
-                    Reg(0)
+                    Word(0)
                 } else if *val == 1.0 {
-                    Reg(1)
+                    Word(1)
                 } else if *val == -1.0 {
-                    Reg(2)
+                    Word(2)
                 } else {
 
                     // let dst = prog.alloc_temp();
@@ -290,11 +290,11 @@ impl Lower for Expr {
                 //}
                 */
                 let dst = if *val == 0.0 {
-                    Reg(0)
+                    Word(0)
                 } else if *val == 1.0 {
-                    Reg(1)
+                    Word(1)
                 } else if *val == -1.0 {
-                    Reg(2)
+                    Word(2)
                 } else {
                     prog.alloc_const(*val)
                 };
@@ -329,7 +329,7 @@ pub struct Equation {
 }
 
 impl Lower for Equation {
-    fn lower(&self, prog: &mut Program) -> Reg {
+    fn lower(&self, prog: &mut Program) -> Word {
         // let src = self.rhs.lower(prog);
 
         let dst = if let Some(var) = self.lhs.diff_var() {
@@ -345,7 +345,7 @@ impl Lower for Equation {
         let src = self.rhs.lower(prog);
 
         prog.push_unary("mov", src, dst);
-        Reg(0)
+        Word(0)
     }
 }
 
@@ -367,7 +367,7 @@ impl CellModel {
 }
 
 impl Lower for CellModel {
-    fn lower(&self, prog: &mut Program) -> Reg {
+    fn lower(&self, prog: &mut Program) -> Word {
         for eq in &self.obs {
             eq.lower(prog);
         }
@@ -376,6 +376,6 @@ impl Lower for CellModel {
             eq.lower(prog);
         }
 
-        Reg(0)
+        Word(0)
     }
 }
