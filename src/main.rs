@@ -57,7 +57,7 @@ fn main() {
 
     let (ty, reuse) = match args[1].as_str() {
         "bytecode" => (CompilerType::ByteCode, true),
-        "native" => (CompilerType::Native, false),
+        "native" => (CompilerType::Native, true),
         "wasm" => (CompilerType::Wasm, true),
         _ => {
             println!("compiler type should be one of bytecode, native, or wasm");

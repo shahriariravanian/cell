@@ -27,7 +27,10 @@ pub struct Assembler {
 
 impl std::fmt::Display for Assembler {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self.assembly)
+        for s in self.assembly.iter() {
+            writeln!(f, "{}", s);
+        }
+        Ok(())
     }
 }
 

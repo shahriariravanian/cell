@@ -5,7 +5,7 @@ use std::error::Error;
 // Unit-like structure abstracting a single register
 // it covers the index of the register in mem
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-pub struct Word(pub usize);
+pub struct Word(pub usize, pub usize);  // index, version
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 // Adjacency tagging (https://serde.rs/enum-representations.html)
@@ -40,6 +40,11 @@ pub struct Frame {
 }
 
 impl Frame {
+    pub const ZERO: Word = Word(0, 0);
+    pub const ONE: Word = Word(1, 0);
+    pub const MINUS_ONE: Word = Word(2, 0);
+    pub const MINUS_ZERO: Word = Word(3, 0);
+
     pub fn new() -> Frame {
         let mut f = Frame {
             words: Vec::new(),
@@ -56,17 +61,14 @@ impl Frame {
     }
 
     fn alloc_temp(&mut self) -> Word {
-        if !self.freed.is_empty() {
-            let k = {
-                let m = self.freed.iter().min_by_key(|x| x.0).unwrap();
-                self.freed.iter().position(|x| x == m).unwrap()
-            };
-            return self.freed.remove(k);
-        };
-
-        let idx = self.words.len();
-        self.words.push(WordType::Temp);
-        Word(idx)
+        if let Some(Word(idx, k)) = self.freed.pop() {
+            Word(idx, k + 1)    // because temps can share the same memory, version
+                                // is increased to differentiate different temps
+        } else {
+            let idx = self.words.len();
+            self.words.push(WordType::Temp);
+            Word(idx, 0)
+        }
     }
 
     pub fn alloc(&mut self, t: WordType) -> Word {
@@ -90,7 +92,7 @@ impl Frame {
         };
 
         self.words.push(t);
-        Word(idx)
+        Word(idx, 0)
     }
 
     pub fn free(&mut self, r: Word) {
@@ -125,7 +127,7 @@ impl Frame {
     }
 
     pub fn find(&self, s: &str) -> Option<Word> {
-        self.named.get(s).map(|idx| Word(*idx))
+        self.named.get(s).map(|idx| Word(*idx, 0))
     }
 
     pub fn find_diff(&self, s: &str) -> Option<Word> {

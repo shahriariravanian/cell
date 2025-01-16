@@ -86,14 +86,32 @@ impl Program {
         })
     }
 
-    pub fn push_binary(&mut self, op: &str, x: Word, y: Word, dst: Word) {
-        let p = self.proc(op);
-
+    pub fn push_binary(&mut self, op_: &str, x_: Word, y_: Word, dst_: Word) {
+        if op_ == "plus" && !self.code.is_empty() {
+            let c = self.code.pop().unwrap();
+            if let Instruction::Unary {op, x, dst, p} = c.clone() {
+                if op == "neg" && dst == y_ {
+                    let p = self.proc("minus");
+                    self.code.push(Instruction::Binary {
+                        op: "minus".to_string(),
+                        x: x_,
+                        y: x,
+                        dst: dst_,
+                        p,                        
+                    });
+                    return
+                }                 
+            };
+            self.code.push(c);
+        }        
+        
+        let p = self.proc(op_);
+    
         self.code.push(Instruction::Binary {
-            op: op.to_string(),
-            x,
-            y,
-            dst,
+            op: op_.to_string(),
+            x: x_,
+            y: y_,
+            dst: dst_,
             p,
         })
     }
@@ -209,14 +227,14 @@ impl Expr {
         let x = args[0].lower(prog);
         let dst = prog.alloc_temp();
 
-        if x == Word(2) {
+        if x == Frame::MINUS_ONE {
             prog.pop();
             let y = args[1].lower(prog);
             prog.push_unary("neg", y, dst);
             prog.free(y);
         } else {
             let y = args[1].lower(prog);
-            if y == Word(2) {
+            if y == Frame::MINUS_ONE {
                 prog.pop();
                 prog.push_unary("neg", x, dst);
             } else {
@@ -271,30 +289,12 @@ impl Lower for Expr {
     fn lower(&self, prog: &mut Program) -> Word {
         match self {
             Expr::Const { val } => {
-                // Optimization!
-                // we assume that the value of Word(0) is 0.0, Word(1) is 1,
-                // and Word(2) is -1
-                /*
-                if *val == 0.0 {
-                    Word(0)
-                } else if *val == 1.0 {
-                    Word(1)
-                } else if *val == -1.0 {
-                    Word(2)
-                } else {
-
-                    // let dst = prog.alloc_temp();
-                    let dst = prog.alloc_const(*val);
-                    prog.push(Instruction::Num { val: *val, dst }); // not needed for code generation, useful for debugging
-                    dst
-                //}
-                */
                 let dst = if *val == 0.0 {
-                    Word(0)
+                    Frame::ZERO
                 } else if *val == 1.0 {
-                    Word(1)
+                    Frame::ONE
                 } else if *val == -1.0 {
-                    Word(2)
+                    Frame::MINUS_ONE
                 } else {
                     prog.alloc_const(*val)
                 };
@@ -330,8 +330,6 @@ pub struct Equation {
 
 impl Lower for Equation {
     fn lower(&self, prog: &mut Program) -> Word {
-        // let src = self.rhs.lower(prog);
-
         let dst = if let Some(var) = self.lhs.diff_var() {
             prog.reg_diff(&var)
         } else if let Some(var) = self.lhs.var() {
@@ -345,7 +343,7 @@ impl Lower for Equation {
         let src = self.rhs.lower(prog);
 
         prog.push_unary("mov", src, dst);
-        Word(0)
+        Frame::ZERO
     }
 }
 
@@ -376,6 +374,6 @@ impl Lower for CellModel {
             eq.lower(prog);
         }
 
-        Word(0)
+        Frame::ZERO
     }
 }

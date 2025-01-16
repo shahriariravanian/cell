@@ -7,7 +7,7 @@ use std::io::Write;
 use crate::assembler::Assembler;
 use crate::code::*;
 use crate::model::Program;
-use crate::register::Word;
+use crate::register::{Frame, Word};
 use crate::utils::*;
 
 #[derive(Debug)]
@@ -64,14 +64,16 @@ impl NativeCompiler {
             "or" => self.push("orpd xmm0, xmm1"),
             "xor" => self.push("xorpd xmm0, xmm1"),
             "neg" => {
-                self.push(format!("movsd xmm1, qword ptr [rbp+0x{:x}]", 8 * Word(3).0).as_str());
-                self.push("xorpd xmm0, xmm1")
+                self.push(
+                    format!("movsd xmm1, qword ptr [rbp+0x{:x}]", 8 * Frame::MINUS_ZERO.0).as_str(),
+                );                
+                self.push("xorpd xmm0, xmm1 ; neg")
             }
             _ => {
                 if !self.optimize {
                     self.dump_buffer();
                 }
-                self.push(format!("mov rax, qword ptr [rbx+0x{:x}]", 8 * p.0).as_str());
+                self.push(format!("mov rax, qword ptr [rbx+0x{:x}] ; op = {}", 8 * p.0, op).as_str());
                 self.push("call rax");
             }
         }
@@ -86,10 +88,10 @@ impl NativeCompiler {
     }
 
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {
-        if r == Word(0) {
-            self.push(format!("xorpd xmm{}, xmm{}", x, x).as_str());
+        if r == Frame::ZERO {
+            self.push(format!("xorpd xmm{}, xmm{} ; set to 0", x, x).as_str());
         } else {
-            self.push(format!("movsd xmm{}, qword ptr [rbp+0x{:x}]", x, 8 * r.0).as_str());
+            self.push(format!("movsd xmm{}, qword ptr [rbp+0x{:x}] ; load indirect", x, 8 * r.0).as_str());
         }
     }
 
@@ -143,9 +145,11 @@ impl NativeCompiler {
                 }
                 Linear::Consumer(c) => {
                     let r = candidates.pop();
+
                     if candidates.contains(c) {
                         saveables.insert(*c);
                     };
+
                     if r.is_some() {
                         candidates.push(r.unwrap());
                     };
@@ -178,9 +182,11 @@ impl NativeCompiler {
                 }
                 Linear::Consumer(c) => {
                     let r = candidates.pop();
+
                     if candidates.contains(c) {
                         bufferable.insert(*c);
                     };
+
                     if r.is_some() {
                         candidates.push(r.unwrap());
                     };
@@ -250,7 +256,7 @@ impl Compiler<MachineCode> for NativeCompiler {
         self.push("mov rbp, rdi");
         self.push("mov rbx, rdx");
 
-        let mut r = Word(0);
+        let mut r = Frame::ZERO;
 
         let linear = self.linearize(prog);
         let saveables = self.find_saveables(&linear);
@@ -279,7 +285,7 @@ impl Compiler<MachineCode> for NativeCompiler {
                     };
 
                     if *y == r {
-                        self.push("movsd xmm1, xmm0");
+                        self.push("movsd xmm1, xmm0 ; binary::y");
                     } else {
                         self.load_buffered(Self::XMM1, *y);
                     }
@@ -293,13 +299,13 @@ impl Compiler<MachineCode> for NativeCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        self.push("movsd xmm2, xmm0");
+                        self.push("movsd xmm2, xmm0; ifelse::cond");
                     } else {
                         self.load_buffered(Self::XMM2, *cond);
                     }
 
                     if *x2 == r {
-                        self.push("movsd xmm1, xmm0");
+                        self.push("movsd xmm1, xmm0 ; ; ifelse::x2");
                     } else {
                         self.load_buffered(Self::XMM1, *x2);
                     }
@@ -319,14 +325,14 @@ impl Compiler<MachineCode> for NativeCompiler {
             // A diff register should be saved, cannot be buffered
             if prog.frame.is_diff(&r) {
                 self.save_xmm_indirect(Self::XMM0, r);
-                r = Word(0);
+                r = Frame::ZERO;
             }
 
             // A bufferable register can be buffered without the
             // need for self.dump_buffer()
             if self.optimize && bufferable.contains(&r) {
                 self.save_buffered(Self::XMM0, r);
-                r = Word(0);
+                r = Frame::ZERO;
             }
 
             // A saveable register can be saved directly or buffered
@@ -338,7 +344,7 @@ impl Compiler<MachineCode> for NativeCompiler {
                 } else {
                     self.save_buffered(Self::XMM0, r);
                 }
-                r = Word(0);
+                r = Frame::ZERO;
             }
         }
 
@@ -346,6 +352,8 @@ impl Compiler<MachineCode> for NativeCompiler {
         self.push("pop rbx");
         self.push("pop rbp");
         self.push("ret");
+
+        // println!("{}", &self.assembler);
 
         MachineCode::new(
             &self.assembler.code(),
