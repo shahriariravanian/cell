@@ -2,6 +2,26 @@ use crate::code::*;
 use crate::model::Program;
 use crate::utils::*;
 
+pub enum Fast {
+    Unary {
+        x: u32,
+        dst: u32,
+        f: BinaryFunc,
+    },
+    Binary {
+        x: u32,
+        y: u32,
+        dst: u32,
+        f: BinaryFunc,
+    },
+    IfElse {
+        x1: u32,
+        x2: u32,
+        cond: u32,
+        dst: u32,
+    },
+}
+
 #[derive(Debug)]
 pub struct Interpreter {}
 
@@ -13,20 +33,50 @@ impl Interpreter {
 
 impl Compiler<ByteCode> for Interpreter {
     fn compile(&mut self, prog: &Program) -> ByteCode {
-        ByteCode::new(prog.code.clone(), prog.virtual_table(), prog.frame.mem())
+        let vt = prog.virtual_table();
+        let mut code: Vec<Fast> = Vec::new();
+
+        for c in prog.code.iter() {
+            match c {
+                Instruction::Unary { p, x, dst, .. } => {
+                    code.push(Fast::Unary {
+                        f: vt[p.0],
+                        x: x.0 as u32,
+                        dst: dst.0 as u32,
+                    });
+                }
+                Instruction::Binary { p, x, y, dst, .. } => {
+                    code.push(Fast::Binary {
+                        f: vt[p.0],
+                        x: x.0 as u32,
+                        y: y.0 as u32,
+                        dst: dst.0 as u32,
+                    });
+                }
+                Instruction::IfElse { x1, x2, cond, dst } => {
+                    code.push(Fast::IfElse {
+                        x1: x1.0 as u32,
+                        x2: x2.0 as u32,
+                        cond: cond.0 as u32,
+                        dst: dst.0 as u32,
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        ByteCode::new(code, prog.frame.mem())
     }
 }
 
-#[derive(Debug)]
 pub struct ByteCode {
-    code: Vec<Instruction>,
-    vt: Vec<BinaryFunc>,
+    code: Vec<Fast>,
     _mem: Vec<f64>,
 }
 
 impl ByteCode {
-    fn new(code: Vec<Instruction>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> ByteCode {
-        ByteCode { code, vt, _mem }
+    fn new(code: Vec<Fast>, _mem: Vec<f64>) -> ByteCode {
+        ByteCode { code, _mem }
     }
 }
 
@@ -34,20 +84,19 @@ impl Compiled for ByteCode {
     fn run(&mut self) {
         for c in self.code.iter() {
             match c {
-                Instruction::Unary { p, x, dst, .. } => {
-                    self._mem[dst.0] = self.vt[p.0](self._mem[x.0], 0.0);
+                Fast::Unary { f, x, dst, .. } => {
+                    self._mem[*dst as usize] = f(self._mem[*x as usize], 0.0);
                 }
-                Instruction::Binary { p, x, y, dst, .. } => {
-                    self._mem[dst.0] = self.vt[p.0](self._mem[x.0], self._mem[y.0]);
+                Fast::Binary { f, x, y, dst, .. } => {
+                    self._mem[*dst as usize] = f(self._mem[*x as usize], self._mem[*y as usize]);
                 }
-                Instruction::IfElse { x1, x2, cond, dst } => {
-                    self._mem[dst.0] = if self._mem[cond.0] > 0.0 {
-                        self._mem[x1.0]
+                Fast::IfElse { x1, x2, cond, dst } => {
+                    self._mem[*dst as usize] = if self._mem[*cond as usize] > 0.0 {
+                        self._mem[*x1 as usize]
                     } else {
-                        self._mem[x2.0]
+                        self._mem[*x2 as usize]
                     }
                 }
-                _ => {}
             }
         }
     }

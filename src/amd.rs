@@ -65,15 +65,21 @@ impl NativeCompiler {
             "xor" => self.push("xorpd xmm0, xmm1"),
             "neg" => {
                 self.push(
-                    format!("movsd xmm1, qword ptr [rbp+0x{:x}]", 8 * Frame::MINUS_ZERO.0).as_str(),
-                );                
+                    format!(
+                        "movsd xmm1, qword ptr [rbp+0x{:x}]",
+                        8 * Frame::MINUS_ZERO.0
+                    )
+                    .as_str(),
+                );
                 self.push("xorpd xmm0, xmm1 ; neg")
             }
             _ => {
                 if !self.optimize {
                     self.dump_buffer();
                 }
-                self.push(format!("mov rax, qword ptr [rbx+0x{:x}] ; op = {}", 8 * p.0, op).as_str());
+                self.push(
+                    format!("mov rax, qword ptr [rbx+0x{:x}] ; op = {}", 8 * p.0, op).as_str(),
+                );
                 self.push("call rax");
             }
         }
@@ -91,7 +97,14 @@ impl NativeCompiler {
         if r == Frame::ZERO {
             self.push(format!("xorpd xmm{}, xmm{} ; set to 0", x, x).as_str());
         } else {
-            self.push(format!("movsd xmm{}, qword ptr [rbp+0x{:x}] ; load indirect", x, 8 * r.0).as_str());
+            self.push(
+                format!(
+                    "movsd xmm{}, qword ptr [rbp+0x{:x}] ; load indirect",
+                    x,
+                    8 * r.0
+                )
+                .as_str(),
+            );
         }
     }
 

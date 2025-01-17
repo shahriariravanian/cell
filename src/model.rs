@@ -87,9 +87,10 @@ impl Program {
     }
 
     pub fn push_binary(&mut self, op_: &str, x_: Word, y_: Word, dst_: Word) {
+        // optimization by fusing x + (-y) to x - y
         if op_ == "plus" && !self.code.is_empty() {
             let c = self.code.pop().unwrap();
-            if let Instruction::Unary {op, x, dst, p} = c.clone() {
+            if let Instruction::Unary { op, x, dst, p } = c.clone() {
                 if op == "neg" && dst == y_ {
                     let p = self.proc("minus");
                     self.code.push(Instruction::Binary {
@@ -97,16 +98,16 @@ impl Program {
                         x: x_,
                         y: x,
                         dst: dst_,
-                        p,                        
+                        p,
                     });
-                    return
-                }                 
+                    return;
+                }
             };
             self.code.push(c);
-        }        
-        
+        }
+
         let p = self.proc(op_);
-    
+
         self.code.push(Instruction::Binary {
             op: op_.to_string(),
             x: x_,

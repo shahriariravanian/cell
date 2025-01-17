@@ -5,7 +5,7 @@ use std::error::Error;
 // Unit-like structure abstracting a single register
 // it covers the index of the register in mem
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-pub struct Word(pub usize, pub usize);  // index, version
+pub struct Word(pub usize, pub usize); // index, version
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 // Adjacency tagging (https://serde.rs/enum-representations.html)
@@ -62,8 +62,8 @@ impl Frame {
 
     fn alloc_temp(&mut self) -> Word {
         if let Some(Word(idx, k)) = self.freed.pop() {
-            Word(idx, k + 1)    // because temps can share the same memory, version
-                                // is increased to differentiate different temps
+            Word(idx, k + 1) // because temps can share the same memory, version
+                             // is increased to differentiate different temps
         } else {
             let idx = self.words.len();
             self.words.push(WordType::Temp);
