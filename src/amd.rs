@@ -87,7 +87,7 @@ impl NativeCompiler {
 
     // xmm2 == true ? xmm0 : xmm1
     fn ifelse(&mut self) {
-        self.push("movsd xmm3, xmm2");
+        self.push("movapd xmm3, xmm2");
         self.push("andpd xmm0, xmm2");
         self.push("andnpd xmm3, xmm1");
         self.push("addsd xmm0, xmm3");
@@ -217,13 +217,13 @@ impl NativeCompiler {
 
     fn load_buffered(&mut self, x: u8, r: Word) {
         if self.x4.is_some_and(|s| s == r) {
-            self.push(format!("movsd xmm{}, xmm4", x).as_str());
+            self.push(format!("movapd xmm{}, xmm4", x).as_str());
             self.x4 = None;
             return;
         }
 
         if self.x5.is_some_and(|s| s == r) {
-            self.push(format!("movsd xmm{}, xmm5", x).as_str());
+            self.push(format!("movapd xmm{}, xmm5", x).as_str());
             self.x5 = None;
             return;
         }
@@ -233,13 +233,13 @@ impl NativeCompiler {
 
     fn save_buffered(&mut self, x: u8, r: Word) {
         if self.x4.is_none() {
-            self.push(format!("movsd xmm4, xmm{}", x).as_str());
+            self.push(format!("movapd xmm4, xmm{}", x).as_str());
             self.x4 = Some(r);
             return;
         }
 
         if self.x5.is_none() {
-            self.push(format!("movsd xmm5, xmm{}", x).as_str());
+            self.push(format!("movapd xmm5, xmm{}", x).as_str());
             self.x5 = Some(r);
             return;
         }
@@ -298,7 +298,7 @@ impl Compiler<MachineCode> for NativeCompiler {
                     };
 
                     if *y == r {
-                        self.push("movsd xmm1, xmm0 ; binary::y");
+                        self.push("movapd xmm1, xmm0 ; binary::y");
                     } else {
                         self.load_buffered(Self::XMM1, *y);
                     }
@@ -312,13 +312,13 @@ impl Compiler<MachineCode> for NativeCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        self.push("movsd xmm2, xmm0; ifelse::cond");
+                        self.push("movapd xmm2, xmm0; ifelse::cond");
                     } else {
                         self.load_buffered(Self::XMM2, *cond);
                     }
 
                     if *x2 == r {
-                        self.push("movsd xmm1, xmm0 ; ; ifelse::x2");
+                        self.push("movapd xmm1, xmm0; ifelse::x2");
                     } else {
                         self.load_buffered(Self::XMM1, *x2);
                     }

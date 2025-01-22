@@ -3,24 +3,25 @@ use std::fs;
 use std::io::{BufWriter, Write};
 use std::time::Instant;
 
-mod amd;
 mod assembler;
 mod code;
-mod interpreter;
 mod model;
 mod register;
 mod runnable;
 mod solvers;
 mod utils;
 mod vector;
+
+mod amd;
+mod interpreter;
+mod rusty;
 mod wasm;
+
+mod func;
 
 use crate::model::{CellModel, Program};
 use crate::runnable::{CompilerType, Runnable};
 use crate::solvers::*;
-//use crate::utils::*;
-
-//use crate::wasm::*;
 
 fn solve(r: &mut Runnable) {
     let u0 = r.initial_states();
@@ -52,13 +53,11 @@ fn main() {
     let text = fs::read_to_string(args[2].as_str()).unwrap();
     let ml = CellModel::load(&text).unwrap();
 
-    // println!("{:#?}", &prog);
-    // println!("running...");
-
     let (ty, reuse) = match args[1].as_str() {
         "bytecode" => (CompilerType::ByteCode, true),
         "native" => (CompilerType::Native, true),
         "wasm" => (CompilerType::Wasm, true),
+        "rusty" => (CompilerType::Rusty, true),
         _ => {
             println!("compiler type should be one of bytecode, native, or wasm");
             std::process::exit(0);

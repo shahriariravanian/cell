@@ -1,16 +1,20 @@
 use std::ffi::{c_char, CStr, CString};
 
-mod amd;
 mod assembler;
 mod code;
-mod interpreter;
 mod model;
 mod register;
 mod runnable;
 mod solvers;
 mod utils;
 mod vector;
+
+mod amd;
+mod interpreter;
+mod rusty;
 mod wasm;
+
+mod func;
 
 use crate::model::{CellModel, Program};
 use crate::runnable::{CompilerType, Runnable};

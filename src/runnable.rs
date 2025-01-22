@@ -3,12 +3,14 @@ use crate::utils::*;
 
 use crate::amd::NativeCompiler;
 use crate::interpreter::Interpreter;
+use crate::rusty::RustyCompiler;
 use crate::wasm::WasmCompiler;
 
 pub enum CompilerType {
     ByteCode,
     Native,
     Wasm,
+    Rusty,
 }
 
 pub struct Runnable {
@@ -28,6 +30,7 @@ impl Runnable {
             CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
             CompilerType::Native => Box::new(NativeCompiler::new(true).compile(&prog)),
             CompilerType::Wasm => Box::new(WasmCompiler::new().compile(&prog)),
+            CompilerType::Rusty => Box::new(RustyCompiler::new().compile(&prog)),
         };
 
         let first_state = prog.frame.first_state().unwrap();

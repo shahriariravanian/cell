@@ -44,6 +44,7 @@ impl Assembler {
     pub fn new() -> Assembler {
         let rules = vec![
             Rule::new(r"movsd xmm([0-7]), xmm([0-7])", Self::movsd_xmm_xmm),
+            Rule::new(r"movapd xmm([0-7]), xmm([0-7])", Self::movapd_xmm_xmm),
             Rule::new(
                 r"movsd xmm([0-7]), qword ptr \[r([a-z0-9]+)\+0x([0-9a-f]+)\]",
                 Self::movsd_xmm_mem,
@@ -160,6 +161,12 @@ impl Assembler {
         let dst = Self::xmm(&caps[1]);
         let src = Self::xmm(&caps[2]);
         vec![0xf2, 0x0f, 0x10, Self::modrm_reg(src, dst)]
+    }
+
+    fn movapd_xmm_xmm(caps: &Captures) -> Vec<u8> {
+        let dst = Self::xmm(&caps[1]);
+        let src = Self::xmm(&caps[2]);
+        vec![0x66, 0x0f, 0x28, Self::modrm_reg(src, dst)]
     }
 
     fn movsd_xmm_mem(caps: &Captures) -> Vec<u8> {
