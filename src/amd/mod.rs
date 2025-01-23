@@ -4,11 +4,13 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 
-use crate::assembler::Assembler;
-use crate::code::*;
-use crate::model::Program;
-use crate::register::{Frame, Word};
-use crate::utils::*;
+mod assembler;
+
+use assembler::Assembler;
+use super::code::*;
+use super::model::Program;
+use super::register::{Frame, Word};
+use super::utils::*;
 
 #[derive(Debug)]
 pub struct NativeCompiler {
@@ -90,7 +92,7 @@ impl NativeCompiler {
         self.push("movapd xmm3, xmm2");
         self.push("andpd xmm0, xmm2");
         self.push("andnpd xmm3, xmm1");
-        self.push("addsd xmm0, xmm3");
+        self.push("orpd xmm0, xmm3");
     }
 
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {

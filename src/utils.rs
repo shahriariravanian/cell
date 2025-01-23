@@ -5,38 +5,6 @@
 */
 
 use crate::model::Program;
-use std::ops::{Deref, DerefMut};
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Vector(pub Vec<f64>);
-
-/**************** Deref *********************/
-
-impl Deref for Vector {
-    type Target = Vec<f64>;
-
-    fn deref(&self) -> &Vec<f64> {
-        &self.0
-    }
-}
-
-impl DerefMut for Vector {
-    fn deref_mut(&mut self) -> &mut Vec<f64> {
-        &mut self.0
-    }
-}
-
-impl Vector {
-    pub fn as_ref(&self) -> &[f64] {
-        self.0.as_ref()
-    }
-
-    pub fn as_mut(&mut self) -> &mut [f64] {
-        self.0.as_mut()
-    }
-}
-
-/********************************************/
 
 pub trait Callable {
     fn call(&mut self, du: &mut [f64], u: &[f64], p: &[f64], t: f64);

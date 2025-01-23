@@ -1,6 +1,6 @@
-use crate::code::*;
-use crate::model::Program;
-use crate::utils::*;
+use super::code::*;
+use super::model::Program;
+use super::utils::*;
 
 pub enum Fast {
     Unary {

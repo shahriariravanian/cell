@@ -1,10 +1,35 @@
 use std::ops::{Add, Div, Mul, Sub};
 use std::ops::{AddAssign, DivAssign, MulAssign, SubAssign};
+use std::ops::{Deref, DerefMut};
 
 use crate::utils::*;
 
-//#[derive(Debug, Clone, PartialEq)]
-//pub struct Vector (pub Vec<f64>);
+#[derive(Debug, Clone, PartialEq)]
+pub struct Vector(pub Vec<f64>);
+
+impl Deref for Vector {
+    type Target = Vec<f64>;
+
+    fn deref(&self) -> &Vec<f64> {
+        &self.0
+    }
+}
+
+impl DerefMut for Vector {
+    fn deref_mut(&mut self) -> &mut Vec<f64> {
+        &mut self.0
+    }
+}
+
+impl Vector {
+    pub fn as_ref(&self) -> &[f64] {
+        self.0.as_ref()
+    }
+
+    pub fn as_mut(&mut self) -> &mut [f64] {
+        self.0.as_mut()
+    }
+}
 
 impl Vector {
     /*

@@ -1,24 +1,20 @@
 use std::ffi::{c_char, CStr, CString};
 
-mod assembler;
 mod code;
 mod model;
 mod register;
 mod runnable;
 mod solvers;
 mod utils;
-mod vector;
 
 mod amd;
 mod interpreter;
 mod rusty;
 mod wasm;
 
-mod func;
-
-use crate::model::{CellModel, Program};
-use crate::runnable::{CompilerType, Runnable};
-use crate::utils::*;
+use model::{CellModel, Program};
+use runnable::{CompilerType, Runnable};
+use utils::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CompilerStatus {

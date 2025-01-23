@@ -1,7 +1,10 @@
 use std::fmt;
 use std::ops::Range;
 
-use crate::utils::{Callable, Vector};
+mod vector;
+
+use super::utils::Callable;
+use vector::Vector;
 
 #[derive(Debug, Clone)]
 pub struct Row {

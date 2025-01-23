@@ -6,7 +6,9 @@ use crate::model::Program;
 use crate::register::Word;
 use crate::utils::*;
 
-use crate::func::*;
+mod func;
+
+use func::*;
 
 #[derive(Debug)]
 pub struct RustyCompiler {
@@ -123,7 +125,7 @@ impl Compiler<RustyCode> for RustyCompiler {
     fn compile(&mut self, prog: &Program) -> RustyCode {
         self.compose(prog);
 
-        let fd = fs::File::create("src/func.rs").expect("cannot create func.rs");
+        let fd = fs::File::create("src/rusty/func.rs").expect("cannot create func.rs");
         let mut buf = BufWriter::new(fd);
 
         //let _ = writeln!(&mut buf, "use crate::code::BinaryFunc;");

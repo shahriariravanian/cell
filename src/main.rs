@@ -3,25 +3,21 @@ use std::fs;
 use std::io::{BufWriter, Write};
 use std::time::Instant;
 
-mod assembler;
 mod code;
 mod model;
 mod register;
 mod runnable;
 mod solvers;
 mod utils;
-mod vector;
 
 mod amd;
 mod interpreter;
 mod rusty;
 mod wasm;
 
-mod func;
-
-use crate::model::{CellModel, Program};
-use crate::runnable::{CompilerType, Runnable};
-use crate::solvers::*;
+use model::{CellModel, Program};
+use runnable::{CompilerType, Runnable};
+use solvers::*;
 
 fn solve(r: &mut Runnable) {
     let u0 = r.initial_states();
