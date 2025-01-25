@@ -6,9 +6,9 @@ use crate::model::Program;
 use crate::register::Word;
 use crate::utils::*;
 
-mod func;
+//mod func;
 
-use func::*;
+//use func::*;
 
 #[derive(Debug)]
 pub struct RustyCompiler {
@@ -154,7 +154,7 @@ impl RustyCode {
 
 impl Compiled for RustyCode {
     fn run(&mut self) {
-        func(&mut self._mem);
+        //func(&mut self._mem);
     }
 
     #[inline]

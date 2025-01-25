@@ -2,13 +2,16 @@ use crate::model::Program;
 use crate::utils::*;
 
 use crate::amd::NativeCompiler;
+use crate::arm::ArmCompiler;
 use crate::interpreter::Interpreter;
 use crate::rusty::RustyCompiler;
 use crate::wasm::WasmCompiler;
 
+#[derive(PartialEq)]
 pub enum CompilerType {
     ByteCode,
     Native,
+    Arm,
     Wasm,
     Rusty,
 }
@@ -31,6 +34,7 @@ impl Runnable {
             CompilerType::Native => Box::new(NativeCompiler::new(true).compile(&prog)),
             CompilerType::Wasm => Box::new(WasmCompiler::new().compile(&prog)),
             CompilerType::Rusty => Box::new(RustyCompiler::new().compile(&prog)),
+            CompilerType::Arm => Box::new(ArmCompiler::new(true).compile(&prog)),
         };
 
         let first_state = prog.frame.first_state().unwrap();

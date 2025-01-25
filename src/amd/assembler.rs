@@ -343,7 +343,7 @@ impl Assembler {
 }
 
 #[test]
-fn test_assembler() {
+fn test_amd() {
     let mut a = Assembler::new();
 
     assert_eq!(vec![0x55], a.translate("push rbp"));

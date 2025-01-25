@@ -14,6 +14,7 @@ mod amd;
 mod interpreter;
 mod rusty;
 mod wasm;
+mod arm;
 
 use model::{CellModel, Program};
 use runnable::{CompilerType, Runnable};
@@ -54,13 +55,15 @@ fn main() {
         "native" => (CompilerType::Native, true),
         "wasm" => (CompilerType::Wasm, true),
         "rusty" => (CompilerType::Rusty, true),
+        "arm" => (CompilerType::Arm, true),
         _ => {
             println!("compiler type should be one of bytecode, native, or wasm");
             std::process::exit(0);
         }
     };
 
-    let prog = Program::new(&ml, reuse);
+    let prog = Program::new(&ml, reuse);    
     let mut r = Runnable::new(prog, ty);
     solve(&mut r);
 }
+
