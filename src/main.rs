@@ -52,12 +52,13 @@ fn main() {
 
     let (ty, reuse) = match args[1].as_str() {
         "bytecode" => (CompilerType::ByteCode, true),
+        "arm" => (CompilerType::Arm, true),
+        "amd" => (CompilerType::Amd, true),
         "native" => (CompilerType::Native, true),
         "wasm" => (CompilerType::Wasm, true),
         "rusty" => (CompilerType::Rusty, true),
-        "arm" => (CompilerType::Arm, true),
         _ => {
-            println!("compiler type should be one of bytecode, native, or wasm");
+            println!("compiler type should be one of bytecode, amd, arm, native, wasm, or. rusty");
             std::process::exit(0);
         }
     };

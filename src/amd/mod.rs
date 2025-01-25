@@ -13,7 +13,7 @@ use super::register::{Frame, Word};
 use super::utils::*;
 
 #[derive(Debug)]
-pub struct NativeCompiler {
+pub struct AmdCompiler {
     assembler: Assembler,
     optimize: bool,
     x4: Option<Word>,
@@ -26,7 +26,7 @@ pub enum Linear {
     Caller(String),
 }
 
-impl NativeCompiler {
+impl AmdCompiler {
     const XMM0: u8 = 0;
     const XMM1: u8 = 1;
     const XMM2: u8 = 2;
@@ -36,7 +36,7 @@ impl NativeCompiler {
     const XMM6: u8 = 6;
     const XMM7: u8 = 7;
 
-    pub fn new(optimize: bool) -> NativeCompiler {
+    pub fn new(optimize: bool) -> AmdCompiler {
         Self {
             assembler: Assembler::new(),
             x4: None,
@@ -262,7 +262,7 @@ impl NativeCompiler {
     }
 }
 
-impl Compiler<MachineCode> for NativeCompiler {
+impl Compiler<MachineCode> for AmdCompiler {
     fn compile(&mut self, prog: &Program) -> MachineCode {
         // function prelude
         self.push("push rbp");

@@ -412,7 +412,7 @@ impl MachineCode {
 impl Compiled for MachineCode {
     fn run(&mut self) {
         let f: fn(&[f64], &[BinaryFunc]) = unsafe { std::mem::transmute(self.p) };
-        //f(&mut self._mem, &self.vt);
+        f(&mut self._mem, &self.vt);
     }
 
     #[inline]
@@ -428,6 +428,6 @@ impl Compiled for MachineCode {
 
 impl Drop for MachineCode {
     fn drop(&mut self) {
-        // let _ = fs::remove_file(&self.name);
+        let _ = fs::remove_file(&self.name);
     }
 }
