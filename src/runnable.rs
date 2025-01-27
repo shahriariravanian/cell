@@ -31,7 +31,7 @@ pub struct Runnable {
 impl Runnable {
     pub fn new(prog: Program, ty: CompilerType) -> Runnable {
         let compiled: Box<dyn Compiled> = match ty {
-            CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),            
+            CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
             CompilerType::Wasm => Box::new(WasmCompiler::new().compile(&prog)),
             CompilerType::Rusty => Box::new(RustyCompiler::new().compile(&prog)),
             CompilerType::Amd => Box::new(AmdCompiler::new(true).compile(&prog)),

@@ -11,10 +11,10 @@ mod solvers;
 mod utils;
 
 mod amd;
+mod arm;
 mod interpreter;
 mod rusty;
 mod wasm;
-mod arm;
 
 use model::{CellModel, Program};
 use runnable::{CompilerType, Runnable};
@@ -43,7 +43,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 3 {
-        println!("use: cell [bytecode|native|wasm] model-file.json");
+        println!("use: cell [bytecode|amd|arm|native|wasm|rusty] model-file.json");
         std::process::exit(0);
     }
 
@@ -63,8 +63,7 @@ fn main() {
         }
     };
 
-    let prog = Program::new(&ml, reuse);    
+    let prog = Program::new(&ml, reuse);
     let mut r = Runnable::new(prog, ty);
     solve(&mut r);
 }
-

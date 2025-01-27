@@ -6,11 +6,11 @@ use std::io::Write;
 
 mod assembler;
 
-use assembler::Assembler;
 use super::code::*;
 use super::model::Program;
 use super::register::{Frame, Word};
 use super::utils::*;
+use assembler::Assembler;
 
 #[derive(Debug)]
 pub struct AmdCompiler {

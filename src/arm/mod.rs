@@ -4,13 +4,14 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 
+#[macro_use] mod macros;
 mod assembler;
 
-use assembler::Assembler;
 use super::code::*;
 use super::model::Program;
 use super::register::{Frame, Word};
 use super::utils::*;
+use assembler::Assembler;
 
 #[derive(Debug)]
 pub struct ArmCompiler {
@@ -48,14 +49,22 @@ impl ArmCompiler {
     fn push(&mut self, s: &str) {
         self.assembler.push(s);
     }
+    
+    fn push_u32(&mut self, w: u32) {
+        self.assembler.push_u32(w);
+    } 
 
     fn op_code(&mut self, op: &str, p: Proc) {
         match op {
             "mov" => {}
-            "plus" => self.push("fadd d0, d0, d1"),
-            "minus" => self.push("fsub d0, d0, d1"),
-            "times" => self.push("fmul d0, d0, d1"),
-            "divide" => self.push("fdiv d0, d0, d1"),
+            //"plus" => self.push("fadd d0, d0, d1"),
+            //"minus" => self.push("fsub d0, d0, d1"),
+            //"times" => self.push("fmul d0, d0, d1"),
+            //"divide" => self.push("fdiv d0, d0, d1"),
+            "plus" => self.push_u32(arm!{fadd d(0), d(0), d(1)}),
+            "minus" => self.push_u32(arm!{fsub d(0), d(0), d(1)}),
+            "times" => self.push_u32(arm!{fmul d(0), d(0), d(1)}),
+            "divide" => self.push_u32(arm!{fdiv d(0), d(0), d(1)}),
             "gt" => self.push("fcmgt d0, d0, d1"),
             "geq" => self.push("fcmge d0, d0, d1"),
             "lt" => self.push("fcmlt d0, d0, d1"),
@@ -66,10 +75,10 @@ impl ArmCompiler {
             "xor" => self.push("eor v0.8b, v0.8b, v0.8b"),
             "neg" => self.push("fneg d0, d0"),
             "root" => self.push("fsqrt d0, d0"),
-            "neq" => { 
+            "neq" => {
                 self.push("cmpeq d0, d0, d1");
                 self.push("not d0, d0");
-            }            
+            }
             _ => {
                 if !self.optimize {
                     self.dump_buffer();
@@ -91,17 +100,12 @@ impl ArmCompiler {
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {
         if r == Frame::ZERO {
             self.push(format!("fmov d{}, #0.0", x).as_str());
-
         } else if r == Frame::ONE {
             self.push(format!("fmov d{}, #1.0", x).as_str());
-
         } else if r == Frame::MINUS_ONE {
             self.push(format!("fmov d{}, #-1.0", x).as_str());
-
         } else {
-            self.push(
-                format!("ldr d{}, [x19, #{}]", x, 8 * r.0).as_str(),
-            );
+            self.push(format!("ldr d{}, [x19, #{}]", x, 8 * r.0).as_str());
         }
     }
 

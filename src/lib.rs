@@ -8,10 +8,10 @@ mod solvers;
 mod utils;
 
 mod amd;
+mod arm;
 mod interpreter;
 mod rusty;
 mod wasm;
-mod arm;
 
 use model::{CellModel, Program};
 use runnable::{CompilerType, Runnable};
