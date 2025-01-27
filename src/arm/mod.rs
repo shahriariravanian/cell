@@ -57,61 +57,57 @@ impl ArmCompiler {
     fn op_code(&mut self, op: &str, p: Proc) {
         match op {
             "mov" => {}
-            //"plus" => self.push("fadd d0, d0, d1"),
-            //"minus" => self.push("fsub d0, d0, d1"),
-            //"times" => self.push("fmul d0, d0, d1"),
-            //"divide" => self.push("fdiv d0, d0, d1"),
             "plus" => self.push_u32(arm!{fadd d(0), d(0), d(1)}),
             "minus" => self.push_u32(arm!{fsub d(0), d(0), d(1)}),
             "times" => self.push_u32(arm!{fmul d(0), d(0), d(1)}),
             "divide" => self.push_u32(arm!{fdiv d(0), d(0), d(1)}),
-            "gt" => self.push("fcmgt d0, d0, d1"),
-            "geq" => self.push("fcmge d0, d0, d1"),
-            "lt" => self.push("fcmlt d0, d0, d1"),
-            "leq" => self.push("fcmle d0, d0, d1"),
-            "eq" => self.push("cmpeq d0, d0, d1"),
-            "and" => self.push("and v0.8b, v0.8b, v0.8b"),
-            "or" => self.push("orr v0.8b, v0.8b, v0.8b"),
-            "xor" => self.push("eor v0.8b, v0.8b, v0.8b"),
-            "neg" => self.push("fneg d0, d0"),
-            "root" => self.push("fsqrt d0, d0"),
+            "gt" => self.push_u32(arm!{fcmgt d(0), d(0), d(1)}),
+            "geq" => self.push_u32(arm!{fcmge d(0), d(0), d(1)}),
+            "lt" => self.push_u32(arm!{fcmlt d(0), d(0), d(1)}),
+            "leq" => self.push_u32(arm!{fcmle d(0), d(0), d(1)}),
+            "eq" => self.push_u32(arm!{fcmeq d(0), d(0), d(1)}),
+            "and" => self.push_u32(arm!{and v(0).8b, v(0).8b, v(1).8b}),
+            "or" => self.push_u32(arm!{orr v(0).8b, v(0).8b, v(1).8b}),
+            "xor" => self.push_u32(arm!{eor v(0).8b, v(0).8b, v(1).8b}),
+            "neg" => self.push_u32(arm!{fneg d(0), d(0)}),
+            "root" => self.push_u32(arm!{fsqrt d(0), d(0)}),
             "neq" => {
-                self.push("cmpeq d0, d0, d1");
-                self.push("not d0, d0");
+                self.push_u32(arm!{fcmeq d(0), d(0), d(1)});
+                self.push_u32(arm!{not v(0).8b, v(0).8b});
             }
             _ => {
                 if !self.optimize {
                     self.dump_buffer();
                 }
-                self.push(format!("ldr x0, [x20, #{}]; op = {}", 8 * p.0, op).as_str());
-                self.push("blr x0");
+                self.push_u32(arm!{ldr x(0), [x(20), #8*p.0]});
+                self.push_u32(arm!{blr x(0)});
             }
         }
     }
 
     // d2 == true ? d0 : d1
     fn ifelse(&mut self) {
-        self.push("and v0.8b, v0.8b, v2.8b");
-        self.push("not v2.8b, v2.8b");
-        self.push("and v1.8b, v1.8b, v2.8b");
-        self.push("orr v0.8b, v0.8b, v1.8b");
+        self.push_u32(arm!{and v(0).8b, v(0).8b, v(2).8b});
+        self.push_u32(arm!{not v(2).8b, v(2).8b});
+        self.push_u32(arm!{and v(1).8b, v(1).8b, v(2).8b});
+        self.push_u32(arm!{orr v(0).8b, v(0).8b, v(1).8b});
     }
 
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {
         if r == Frame::ZERO {
-            self.push(format!("fmov d{}, #0.0", x).as_str());
+            self.push_u32(arm!{fmov d(x), #0.0});
         } else if r == Frame::ONE {
-            self.push(format!("fmov d{}, #1.0", x).as_str());
+            self.push_u32(arm!{fmov d(x), #1.0});
         } else if r == Frame::MINUS_ONE {
-            self.push(format!("fmov d{}, #-1.0", x).as_str());
+            self.push_u32(arm!{fmov d(x), #-1.0});
         } else {
-            self.push(format!("ldr d{}, [x19, #{}]", x, 8 * r.0).as_str());
+            self.push_u32(arm!{ldr d(x), [x(19), #8*r.0]});
         }
     }
 
     fn save_xmm_indirect(&mut self, x: u8, r: Word) {
         if r.0 > 2 {
-            self.push(format!("str d{}, [x19, #{}]", x, 8 * r.0).as_str());
+            self.push_u32(arm!{str d(x), [x(19), #8*r.0]});
         }
     }
 
@@ -218,13 +214,13 @@ impl ArmCompiler {
 
     fn load_buffered(&mut self, x: u8, r: Word) {
         if self.x4.is_some_and(|s| s == r) {
-            self.push(format!("fmov d{}, d4", x).as_str());
+            self.push_u32(arm!{fmov d(x), d(4)});
             self.x4 = None;
             return;
         }
 
         if self.x5.is_some_and(|s| s == r) {
-            self.push(format!("fmov d{}, d5", x).as_str());
+            self.push_u32(arm!{fmov d(x), d(5)});
             self.x5 = None;
             return;
         }
@@ -234,13 +230,13 @@ impl ArmCompiler {
 
     fn save_buffered(&mut self, x: u8, r: Word) {
         if self.x4.is_none() {
-            self.push(format!("fmov d4, d{}", x).as_str());
+            self.push_u32(arm!{fmov d(4), d(x)});
             self.x4 = Some(r);
             return;
         }
 
         if self.x5.is_none() {
-            self.push(format!("fmov d5, d{}", x).as_str());
+            self.push_u32(arm!{fmov d(5), d(x)});
             self.x5 = Some(r);
             return;
         }
@@ -264,12 +260,12 @@ impl ArmCompiler {
 impl Compiler<MachineCode> for ArmCompiler {
     fn compile(&mut self, prog: &Program) -> MachineCode {
         // function prelude
-        self.push("sub sp, sp, #32");
-        self.push("str lr, [sp, #0]");
-        self.push("stp x19, x20, [sp, #16]");
+        self.push_u32(arm!{sub sp, sp, #32});
+        self.push_u32(arm!{str lr, [sp, #0]});
+        self.push_u32(arm!{stp x(19), x(20), [sp, #16]});
 
-        self.push("mov x19, x0");
-        self.push("mov x20, x2");
+        self.push_u32(arm!{mov x(19), x(0)});
+        self.push_u32(arm!{mov x(20), x(2)});
 
         let mut r = Frame::ZERO;
 
@@ -300,7 +296,7 @@ impl Compiler<MachineCode> for ArmCompiler {
                     };
 
                     if *y == r {
-                        self.push("fmov d1, d0 ; binary::y");
+                        self.push_u32(arm!{fmov d(1), d(0)});
                     } else {
                         self.load_buffered(Self::D1, *y);
                     }
@@ -314,13 +310,13 @@ impl Compiler<MachineCode> for ArmCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        self.push("fmov d2, d0; ifelse::cond");
+                        self.push_u32(arm!{fmov d(2), d(0)});
                     } else {
                         self.load_buffered(Self::D2, *cond);
                     }
 
                     if *x2 == r {
-                        self.push("fmov d1, d0; ifelse::x2");
+                        self.push_u32(arm!{fmov d(1), d(0)});
                     } else {
                         self.load_buffered(Self::D1, *x2);
                     }
@@ -364,12 +360,10 @@ impl Compiler<MachineCode> for ArmCompiler {
         }
 
         // function closing instructions
-        self.push("ldp x19, x20, [sp, #16]");
-        self.push("ldr lr, [sp, #0]");
-        self.push("add sp, sp, #32");
-        self.push("ret");
-
-        println!("{}", &self.assembler);
+        self.push_u32(arm!{ldp x(19), x(20), [sp, #16]});
+        self.push_u32(arm!{ldr lr, [sp, #0]});
+        self.push_u32(arm!{add sp, sp, #32});
+        self.push_u32(arm!{ret});
 
         MachineCode::new(
             &self.assembler.code(),
