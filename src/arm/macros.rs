@@ -55,13 +55,13 @@ macro_rules! arm {
     ($op:ident sp, sp, #$imm:expr) => { 
         arm! { $op x(31), x(31), #$imm }  
     };
-
+ 
     // main rules
     (fmov d($rd:expr), d($rn:expr)) => {
         0x1e604000 | rd!($rd) | rn!($rn)
     };
-    (mov x($rd:expr), x($rn:expr)) => {
-        0xaa0003e0 | rd!($rd) | rn!($rn)
+    (mov x($rd:expr), x($rm:expr)) => {
+        0xaa0003e0 | rd!($rd) | rm!($rm)
     };
     
     // single register load/store instructions
