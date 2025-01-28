@@ -4,26 +4,23 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 
-mod assembler;
+#[macro_use]
+mod macros;
 
+use super::analyzer::Analyzer;
 use super::code::*;
+use super::machine::MachineCode;
 use super::model::Program;
 use super::register::{Frame, Word};
 use super::utils::*;
-use assembler::Assembler;
+
 
 #[derive(Debug)]
 pub struct AmdCompiler {
-    assembler: Assembler,
+    machine_code: Vec<u8>,
     optimize: bool,
     x4: Option<Word>,
     x5: Option<Word>,
-}
-
-pub enum Linear {
-    Producer(Word),
-    Consumer(Word),
-    Caller(String),
 }
 
 impl AmdCompiler {
@@ -38,194 +35,78 @@ impl AmdCompiler {
 
     pub fn new(optimize: bool) -> AmdCompiler {
         Self {
-            assembler: Assembler::new(),
+            machine_code: Vec::new(),
             x4: None,
             x5: None,
             optimize,
         }
     }
-
-    fn push(&mut self, s: &str) {
-        self.assembler.push(s);
+    
+    pub fn push_vec(&mut self, v: Vec<u8>) {
+        self.machine_code.extend_from_slice(&v[..]);
     }
 
     fn op_code(&mut self, op: &str, p: Proc) {
         match op {
             "mov" => {}
-            "plus" => self.push("addsd xmm0, xmm1"),
-            "minus" => self.push("subsd xmm0, xmm1"),
-            "times" => self.push("mulsd xmm0, xmm1"),
-            "divide" => self.push("divsd xmm0, xmm1"),
-            "gt" => self.push("cmpnlesd xmm0, xmm1"),
-            "geq" => self.push("cmpnltsd xmm0, xmm1"),
-            "lt" => self.push("cmpltsd xmm0, xmm1"),
-            "leq" => self.push("cmplesd xmm0, xmm1"),
-            "eq" => self.push("cmpeqsd xmm0, xmm1"),
-            "neq" => self.push("cmpneqsd xmm0, xmm1"),
-            "and" => self.push("andpd xmm0, xmm1"),
-            "or" => self.push("orpd xmm0, xmm1"),
-            "xor" => self.push("xorpd xmm0, xmm1"),
+            "plus" => self.push_vec(amd!{addsd xmm(0), xmm(1)}),
+            "minus" => self.push_vec(amd!{subsd xmm(0), xmm(1)}),
+            "times" => self.push_vec(amd!{mulsd xmm(0), xmm(1)}),
+            "divide" => self.push_vec(amd!{divsd xmm(0), xmm(1)}),
+            "gt" => self.push_vec(amd!{cmpnlesd xmm(0), xmm(1)}),
+            "geq" => self.push_vec(amd!{cmpnltsd xmm(0), xmm(1)}),
+            "lt" => self.push_vec(amd!{cmpltsd xmm(0), xmm(1)}),
+            "leq" => self.push_vec(amd!{cmplesd xmm(0), xmm(1)}),
+            "eq" => self.push_vec(amd!{cmpeqsd xmm(0), xmm(1)}),
+            "neq" => self.push_vec(amd!{cmpneqsd xmm(0), xmm(1)}),
+            "and" => self.push_vec(amd!{andpd xmm(0), xmm(1)}),
+            "or" => self.push_vec(amd!{orpd xmm(0), xmm(1)}),
+            "xor" => self.push_vec(amd!{xorpd xmm(0), xmm(1)}),
             "neg" => {
-                self.push(
-                    format!(
-                        "movsd xmm1, qword ptr [rbp+0x{:x}]",
-                        8 * Frame::MINUS_ZERO.0
-                    )
-                    .as_str(),
-                );
-                self.push("xorpd xmm0, xmm1 ; neg")
+                self.push_vec(amd!{movsd xmm(1), qword ptr [rbp+8*Frame::MINUS_ZERO.0]});
+                self.push_vec(amd!{xorpd xmm(0), xmm(1)});
             }
             _ => {
                 if !self.optimize {
                     self.dump_buffer();
                 }
-                self.push(
-                    format!("mov rax, qword ptr [rbx+0x{:x}] ; op = {}", 8 * p.0, op).as_str(),
-                );
-                self.push("call rax");
+                self.push_vec(amd!{mov rax, qword ptr [rbx+8*p.0]});
+                self.push_vec(amd!{call rax});
             }
         }
     }
 
-    // xmm2 == true ? xmm0 : xmm1
+    // xmm(2) == true ? xmm(0) : xmm(1)
     fn ifelse(&mut self) {
-        self.push("movapd xmm3, xmm2");
-        self.push("andpd xmm0, xmm2");
-        self.push("andnpd xmm3, xmm1");
-        self.push("orpd xmm0, xmm3");
+        self.push_vec(amd!{movapd xmm(3), xmm(2)});
+        self.push_vec(amd!{andpd xmm(0), xmm(2)});
+        self.push_vec(amd!{andnpd xmm(3), xmm(1)});
+        self.push_vec(amd!{orpd xmm(0), xmm(3)});
     }
 
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {
         if r == Frame::ZERO {
-            self.push(format!("xorpd xmm{}, xmm{} ; set to 0", x, x).as_str());
+            self.push_vec(amd!{xorpd xmm(x), xmm(x)});
         } else {
-            self.push(
-                format!(
-                    "movsd xmm{}, qword ptr [rbp+0x{:x}] ; load indirect",
-                    x,
-                    8 * r.0
-                )
-                .as_str(),
-            );
+            self.push_vec(amd!{movsd xmm(x), qword ptr [rbp+8*r.0]});
         }
     }
 
     fn save_xmm_indirect(&mut self, x: u8, r: Word) {
         if r.0 > 2 {
-            self.push(format!("movsd qword ptr [rbp+0x{:x}], xmm{}", 8 * r.0, x).as_str());
+            self.push_vec(amd!{movsd qword ptr [rbp+8*r.0], xmm(x)});
         }
-    }
-
-    fn linearize(&self, prog: &Program) -> Vec<Linear> {
-        let mut linear: Vec<Linear> = Vec::new();
-
-        for c in prog.code.iter() {
-            match c {
-                Instruction::Unary { op, x, dst, .. } => {
-                    linear.push(Linear::Consumer(*x));
-                    linear.push(Linear::Caller(op.clone()));
-                    linear.push(Linear::Producer(*dst));
-                }
-                Instruction::Binary { op, x, y, dst, .. } => {
-                    linear.push(Linear::Consumer(*x));
-                    linear.push(Linear::Consumer(*y));
-                    linear.push(Linear::Caller(op.clone()));
-                    linear.push(Linear::Producer(*dst));
-                }
-                Instruction::IfElse { x1, x2, cond, dst } => {
-                    linear.push(Linear::Consumer(*x1));
-                    linear.push(Linear::Consumer(*x2));
-                    linear.push(Linear::Consumer(*cond));
-                    linear.push(Linear::Caller("select".to_string()));
-                    linear.push(Linear::Producer(*dst));
-                }
-                _ => {}
-            }
-        }
-        linear
-    }
-
-    /*
-        A saveable register is produced but is not consumed immediately
-        In other words, it cannot be coalesced over consecuative instructions
-    */
-    fn find_saveables(&self, linear: &Vec<Linear>) -> HashSet<Word> {
-        let mut candidates: Vec<Word> = Vec::new();
-        let mut saveables: HashSet<Word> = HashSet::new();
-
-        for l in linear.iter() {
-            match l {
-                Linear::Producer(p) => {
-                    candidates.push(*p);
-                }
-                Linear::Consumer(c) => {
-                    let r = candidates.pop();
-
-                    if candidates.contains(c) {
-                        saveables.insert(*c);
-                    };
-
-                    if r.is_some() {
-                        candidates.push(r.unwrap());
-                    };
-                }
-                Linear::Caller(_) => {}
-            }
-        }
-
-        saveables
-    }
-
-    /*
-        A bufferable register is a saveable register that its lifetime
-        does not cross an external call boundary, which can invalidate
-        the buffer
-    */
-    fn find_bufferable(&self, linear: &Vec<Linear>) -> HashSet<Word> {
-        let caller = [
-            "rem", "power", "sin", "cos", "tan", "csc", "sec", "cot", "arcsin", "arccos", "arctan",
-            "exp", "ln", "log", "root",
-        ];
-
-        let mut candidates: Vec<Word> = Vec::new();
-        let mut bufferable: HashSet<Word> = HashSet::new();
-
-        for l in linear.iter() {
-            match l {
-                Linear::Producer(p) => {
-                    candidates.push(*p);
-                }
-                Linear::Consumer(c) => {
-                    let r = candidates.pop();
-
-                    if candidates.contains(c) {
-                        bufferable.insert(*c);
-                    };
-
-                    if r.is_some() {
-                        candidates.push(r.unwrap());
-                    };
-                }
-                Linear::Caller(op) => {
-                    if caller.contains(&op.as_str()) {
-                        candidates.clear();
-                    }
-                }
-            }
-        }
-
-        bufferable
     }
 
     fn load_buffered(&mut self, x: u8, r: Word) {
         if self.x4.is_some_and(|s| s == r) {
-            self.push(format!("movapd xmm{}, xmm4", x).as_str());
+            self.push_vec(amd!{movapd xmm(x), xmm(4)});
             self.x4 = None;
             return;
         }
 
         if self.x5.is_some_and(|s| s == r) {
-            self.push(format!("movapd xmm{}, xmm5", x).as_str());
+            self.push_vec(amd!{movapd xmm(x), xmm(5)});
             self.x5 = None;
             return;
         }
@@ -235,13 +116,13 @@ impl AmdCompiler {
 
     fn save_buffered(&mut self, x: u8, r: Word) {
         if self.x4.is_none() {
-            self.push(format!("movapd xmm4, xmm{}", x).as_str());
+            self.push_vec(amd!{movapd xmm(4), xmm(x)});
             self.x4 = Some(r);
             return;
         }
 
         if self.x5.is_none() {
-            self.push(format!("movapd xmm5, xmm{}", x).as_str());
+            self.push_vec(amd!{movapd xmm(5), xmm(x)});
             self.x5 = Some(r);
             return;
         }
@@ -260,24 +141,32 @@ impl AmdCompiler {
             self.x5 = None;
         }
     }
+    
+    fn prologue(&mut self) {
+        self.push_vec(amd!{push rbp});
+        self.push_vec(amd!{push rbx});
+        self.push_vec(amd!{mov rbp, rdi});
+        self.push_vec(amd!{mov rbx, rdx});
+    }
+    
+    fn epilogue(&mut self) {
+        self.push_vec(amd!{pop rbx});
+        self.push_vec(amd!{pop rbp});
+        self.push_vec(amd!{ret});
+    }
 }
 
 impl Compiler<MachineCode> for AmdCompiler {
     fn compile(&mut self, prog: &Program) -> MachineCode {
-        // function prelude
-        self.push("push rbp");
-        self.push("push rbx");
-
-        self.push("mov rbp, rdi");
-        self.push("mov rbx, rdx");
-
+        self.prologue();
+             
         let mut r = Frame::ZERO;
 
-        let linear = self.linearize(prog);
-        let saveables = self.find_saveables(&linear);
+        let analyzer = Analyzer::new(prog);
+        let saveables = analyzer.find_saveables();
 
         let bufferable: HashSet<Word> = if self.optimize {
-            self.find_bufferable(&linear)
+            analyzer.find_bufferable()
         } else {
             HashSet::new()
         };
@@ -300,7 +189,7 @@ impl Compiler<MachineCode> for AmdCompiler {
                     };
 
                     if *y == r {
-                        self.push("movapd xmm1, xmm0 ; binary::y");
+                        self.push_vec(amd!{movapd xmm(1), xmm(0)});
                     } else {
                         self.load_buffered(Self::XMM1, *y);
                     }
@@ -314,13 +203,13 @@ impl Compiler<MachineCode> for AmdCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        self.push("movapd xmm2, xmm0; ifelse::cond");
+                        self.push_vec(amd!{movapd xmm(2), xmm(0)});
                     } else {
                         self.load_buffered(Self::XMM2, *cond);
                     }
 
                     if *x2 == r {
-                        self.push("movapd xmm1, xmm0; ifelse::x2");
+                        self.push_vec(amd!{movapd xmm(1), xmm(0)});
                     } else {
                         self.load_buffered(Self::XMM1, *x2);
                     }
@@ -362,75 +251,15 @@ impl Compiler<MachineCode> for AmdCompiler {
                 r = Frame::ZERO;
             }
         }
-
-        // function closing instructions
-        self.push("pop rbx");
-        self.push("pop rbp");
-        self.push("ret");
+        
+        self.epilogue();        
 
         // println!("{}", &self.assembler);
 
-        MachineCode::new(
-            &self.assembler.code(),
+        MachineCode::new(            
+            &self.machine_code.clone(),
             prog.virtual_table(),
             prog.frame.mem(),
         )
-    }
-}
-
-#[derive(Debug)]
-pub struct MachineCode {
-    p: *const u8,
-    mmap: Mmap, // we need to store mmap and fs here, so that they are not dropped
-    name: String,
-    fs: fs::File,
-    vt: Vec<BinaryFunc>,
-    _mem: Vec<f64>,
-}
-
-impl MachineCode {
-    fn new(machine_code: &Vec<u8>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> MachineCode {
-        let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 16) + ".bin";
-        MachineCode::write_buf(machine_code, &name);
-        let fs = fs::File::open(&name).unwrap();
-        let mmap = unsafe { MmapOptions::new().map_exec(&fs).unwrap() };
-        let p = mmap.as_ptr() as *const u8;
-
-        MachineCode {
-            p,
-            mmap,
-            name,
-            fs,
-            vt,
-            _mem,
-        }
-    }
-
-    fn write_buf(machine_code: &Vec<u8>, name: &str) {
-        let mut fs = fs::File::create(name).unwrap();
-        fs.write(machine_code).unwrap();
-    }
-}
-
-impl Compiled for MachineCode {
-    fn run(&mut self) {
-        let f: fn(&[f64], &[BinaryFunc]) = unsafe { std::mem::transmute(self.p) };
-        f(&mut self._mem, &self.vt);
-    }
-
-    #[inline]
-    fn mem(&self) -> &[f64] {
-        &self._mem[..]
-    }
-
-    #[inline]
-    fn mem_mut(&mut self) -> &mut [f64] {
-        &mut self._mem[..]
-    }
-}
-
-impl Drop for MachineCode {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.name);
     }
 }

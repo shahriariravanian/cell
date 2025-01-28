@@ -1,13 +1,13 @@
 use std::ffi::{c_char, CStr, CString};
 
+mod analyzer;
 mod code;
+mod machine;
 mod model;
 mod register;
 mod runnable;
 mod solvers;
 mod utils;
-mod machine;
-mod analyzer;
 
 mod amd;
 mod arm;

@@ -11,7 +11,7 @@ pub enum Event {
 }
 
 pub struct Analyzer {
-    pub events: Vec<Event>
+    pub events: Vec<Event>,
 }
 
 impl Analyzer {
@@ -40,8 +40,8 @@ impl Analyzer {
                 }
                 _ => {}
             }
-        };
-        
+        }
+
         Self { events }
     }
 

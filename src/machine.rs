@@ -3,8 +3,8 @@ use rand::distributions::{Alphanumeric, DistString};
 use std::fs;
 use std::io::Write;
 
-use super::utils::*;
 use super::code::BinaryFunc;
+use super::utils::*;
 
 #[derive(Debug)]
 pub struct MachineCode {
@@ -62,4 +62,3 @@ impl Drop for MachineCode {
         let _ = fs::remove_file(&self.name);
     }
 }
-

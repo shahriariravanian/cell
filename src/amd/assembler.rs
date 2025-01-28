@@ -301,7 +301,7 @@ impl Assembler {
             "lt" => 1,
             "le" => 2,
             "unord" => 3,
-            "eq" => 4,
+            "neq" => 4,
             "nlt" => 5,
             "nle" => 6,
             "ord" => 7,
