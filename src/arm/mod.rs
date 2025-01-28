@@ -5,27 +5,33 @@ use std::fs;
 use std::io::Write;
 
 #[macro_use] mod macros;
-mod assembler;
+//mod assembler;
 
 use super::code::*;
 use super::model::Program;
 use super::register::{Frame, Word};
 use super::utils::*;
-use assembler::Assembler;
+use super::analyzer::Analyzer;
+use super::machine::MachineCode;
+//use assembler::Assembler;
 
 #[derive(Debug)]
 pub struct ArmCompiler {
-    assembler: Assembler,
+    
+    //assembler: Assembler,
+    machine_code: Vec<u8>,
     optimize: bool,
     x4: Option<Word>,
     x5: Option<Word>,
 }
 
+/*
 pub enum Linear {
     Producer(Word),
     Consumer(Word),
     Caller(String),
 }
+*/
 
 impl ArmCompiler {
     const D0: u8 = 0;
@@ -39,21 +45,30 @@ impl ArmCompiler {
 
     pub fn new(optimize: bool) -> ArmCompiler {
         Self {
-            assembler: Assembler::new(),
+            //assembler: Assembler::new(),
+            machine_code: Vec::new(),
             x4: None,
             x5: None,
             optimize,
         }
     }
+    
+    pub fn push_u32(&mut self, w: u32) {
+        self.machine_code.push(w as u8);
+        self.machine_code.push((w >> 8) as u8);
+        self.machine_code.push((w >> 16) as u8);
+        self.machine_code.push((w >> 24) as u8);                               
+    }
 
+/*
     fn push(&mut self, s: &str) {
         self.assembler.push(s);
     }
-    
+  
     fn push_u32(&mut self, w: u32) {
         self.assembler.push_u32(w);
     } 
-
+*/
     fn op_code(&mut self, op: &str, p: Proc) {
         match op {
             "mov" => {}
@@ -110,7 +125,7 @@ impl ArmCompiler {
             self.push_u32(arm!{str d(x), [x(19), #8*r.0]});
         }
     }
-
+/*
     fn linearize(&self, prog: &Program) -> Vec<Linear> {
         let mut linear: Vec<Linear> = Vec::new();
 
@@ -211,7 +226,7 @@ impl ArmCompiler {
 
         bufferable
     }
-
+*/
     fn load_buffered(&mut self, x: u8, r: Word) {
         if self.x4.is_some_and(|s| s == r) {
             self.push_u32(arm!{fmov d(x), d(4)});
@@ -269,11 +284,12 @@ impl Compiler<MachineCode> for ArmCompiler {
 
         let mut r = Frame::ZERO;
 
-        let linear = self.linearize(prog);
-        let saveables = self.find_saveables(&linear);
+        //let linear = self.linearize(prog);
+        let analyzer = Analyzer::new(prog);
+        let saveables = analyzer.find_saveables();
 
         let bufferable: HashSet<Word> = if self.optimize {
-            self.find_bufferable(&linear)
+            analyzer.find_bufferable()
         } else {
             HashSet::new()
         };
@@ -366,66 +382,12 @@ impl Compiler<MachineCode> for ArmCompiler {
         self.push_u32(arm!{ret});
 
         MachineCode::new(
-            &self.assembler.code(),
+            //&self.assembler.code(),
+            &self.machine_code.clone(),
             prog.virtual_table(),
             prog.frame.mem(),
         )
     }
 }
 
-#[derive(Debug)]
-pub struct MachineCode {
-    p: *const u8,
-    mmap: Mmap, // we need to store mmap and fs here, so that they are not dropped
-    name: String,
-    fs: fs::File,
-    vt: Vec<BinaryFunc>,
-    _mem: Vec<f64>,
-}
 
-impl MachineCode {
-    fn new(machine_code: &Vec<u8>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> MachineCode {
-        let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 16) + ".bin";
-        MachineCode::write_buf(machine_code, &name);
-        let fs = fs::File::open(&name).unwrap();
-        let mmap = unsafe { MmapOptions::new().map_exec(&fs).unwrap() };
-        let p = mmap.as_ptr() as *const u8;
-
-        MachineCode {
-            p,
-            mmap,
-            name,
-            fs,
-            vt,
-            _mem,
-        }
-    }
-
-    fn write_buf(machine_code: &Vec<u8>, name: &str) {
-        let mut fs = fs::File::create(name).unwrap();
-        fs.write(machine_code).unwrap();
-    }
-}
-
-impl Compiled for MachineCode {
-    fn run(&mut self) {
-        let f: fn(&[f64], &[BinaryFunc]) = unsafe { std::mem::transmute(self.p) };
-        f(&mut self._mem, &self.vt);
-    }
-
-    #[inline]
-    fn mem(&self) -> &[f64] {
-        &self._mem[..]
-    }
-
-    #[inline]
-    fn mem_mut(&mut self) -> &mut [f64] {
-        &mut self._mem[..]
-    }
-}
-
-impl Drop for MachineCode {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.name);
-    }
-}

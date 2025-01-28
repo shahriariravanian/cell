@@ -9,6 +9,8 @@ mod register;
 mod runnable;
 mod solvers;
 mod utils;
+mod machine;
+mod analyzer;
 
 mod amd;
 mod arm;
