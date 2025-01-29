@@ -34,12 +34,12 @@ impl Runnable {
             CompilerType::ByteCode => Box::new(Interpreter::new().compile(&prog)),
             CompilerType::Wasm => Box::new(WasmCompiler::new().compile(&prog)),
             CompilerType::Rusty => Box::new(RustyCompiler::new().compile(&prog)),
-            CompilerType::Amd => Box::new(AmdCompiler::new(true).compile(&prog)),
-            CompilerType::Arm => Box::new(ArmCompiler::new(true).compile(&prog)),
+            CompilerType::Amd => Box::new(AmdCompiler::new().compile(&prog)),
+            CompilerType::Arm => Box::new(ArmCompiler::new().compile(&prog)),
             #[cfg(target_arch = "x86_64")]
-            CompilerType::Native => Box::new(AmdCompiler::new(true).compile(&prog)),
+            CompilerType::Native => Box::new(AmdCompiler::new().compile(&prog)),
             #[cfg(target_arch = "aarch64")]
-            CompilerType::Native => Box::new(ArmCompiler::new(true).compile(&prog)),
+            CompilerType::Native => Box::new(ArmCompiler::new().compile(&prog)),
         };
 
         let first_state = prog.frame.first_state().unwrap();

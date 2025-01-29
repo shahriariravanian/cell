@@ -1,9 +1,3 @@
-use memmap2::{Mmap, MmapOptions};
-use rand::distributions::{Alphanumeric, DistString};
-use std::collections::HashSet;
-use std::fs;
-use std::io::Write;
-
 #[macro_use]
 mod macros;
 
@@ -17,7 +11,6 @@ use super::utils::*;
 #[derive(Debug)]
 pub struct ArmCompiler {
     machine_code: Vec<u8>,
-    optimize: bool,
     x4: Option<Word>,
     x5: Option<Word>,
 }
@@ -32,12 +25,11 @@ impl ArmCompiler {
     const D6: u8 = 6;
     const D7: u8 = 7;
 
-    pub fn new(optimize: bool) -> ArmCompiler {
+    pub fn new() -> ArmCompiler {
         Self {
             machine_code: Vec::new(),
             x4: None,
             x5: None,
-            optimize,
         }
     }
 
@@ -70,9 +62,7 @@ impl ArmCompiler {
                 self.push_u32(arm! {not v(0).8b, v(0).8b});
             }
             _ => {
-                if !self.optimize {
-                    self.dump_buffer();
-                }
+                // self.dump_buffer();
                 self.push_u32(arm! {ldr x(0), [x(20), #8*p.0]});
                 self.push_u32(arm! {blr x(0)});
             }
@@ -148,7 +138,7 @@ impl ArmCompiler {
             self.x5 = None;
         }
     }
-    
+
     fn prologue(&mut self) {
         self.push_u32(arm! {sub sp, sp, #32});
         self.push_u32(arm! {str lr, [sp, #0]});
@@ -156,7 +146,7 @@ impl ArmCompiler {
         self.push_u32(arm! {mov x(19), x(0)});
         self.push_u32(arm! {mov x(20), x(2)});
     }
-    
+
     fn epilogue(&mut self) {
         self.push_u32(arm! {ldp x(19), x(20), [sp, #16]});
         self.push_u32(arm! {ldr lr, [sp, #0]});
@@ -168,17 +158,12 @@ impl ArmCompiler {
 impl Compiler<MachineCode> for ArmCompiler {
     fn compile(&mut self, prog: &Program) -> MachineCode {
         self.prologue();
-    
+
         let mut r = Frame::ZERO;
 
         let analyzer = Analyzer::new(prog);
         let saveables = analyzer.find_saveables();
-
-        let bufferable: HashSet<Word> = if self.optimize {
-            analyzer.find_bufferable()
-        } else {
-            HashSet::new()
-        };
+        let bufferable = analyzer.find_bufferable();
 
         for c in prog.code.iter() {
             match c {
@@ -243,7 +228,7 @@ impl Compiler<MachineCode> for ArmCompiler {
 
             // A bufferable register can be buffered without the
             // need for self.dump_buffer()
-            if self.optimize && bufferable.contains(&r) {
+            if bufferable.contains(&r) {
                 self.save_buffered(Self::D0, r);
                 r = Frame::ZERO;
             }
@@ -252,16 +237,12 @@ impl Compiler<MachineCode> for ArmCompiler {
             // However, if it is buffered, self.dump_buffer() should be
             // uncommented in fn op_code
             if saveables.contains(&r) {
-                if self.optimize {
-                    self.save_xmm_indirect(Self::D0, r);
-                } else {
-                    self.save_buffered(Self::D0, r);
-                }
+                self.save_xmm_indirect(Self::D0, r);
                 r = Frame::ZERO;
             }
         }
 
-        self.epilogue();        
+        self.epilogue();
 
         MachineCode::new(
             &self.machine_code.clone(),

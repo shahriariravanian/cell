@@ -15,11 +15,10 @@ pub struct Program {
     pub code: Vec<Instruction>, // the list of instructions
     pub frame: Frame,           // memory (states, registers, constants, ...)
     pub ft: Vec<String>,        // function table (used to generate a virtual table)
-    pub reuse: bool,
 }
 
 impl Program {
-    pub fn new(ml: &CellModel, reuse: bool) -> Program {
+    pub fn new(ml: &CellModel) -> Program {
         let mut frame = Frame::new();
 
         frame.alloc(WordType::Var(ml.iv.name.clone()));
@@ -40,7 +39,6 @@ impl Program {
             code: Vec::new(),
             frame,
             ft: Vec::new(),
-            reuse,
         };
 
         ml.lower(&mut prog);
@@ -90,7 +88,7 @@ impl Program {
         // optimization by fusing x + (-y) to x - y
         if op_ == "plus" && !self.code.is_empty() {
             let c = self.code.pop().unwrap();
-            if let Instruction::Unary { op, x, dst, p } = c.clone() {
+            if let Instruction::Unary { op, x, dst, .. } = c.clone() {
                 if op == "neg" && dst == y_ {
                     let p = self.proc("minus");
                     self.code.push(Instruction::Binary {
@@ -137,9 +135,7 @@ impl Program {
     }
 
     pub fn free(&mut self, r: Word) {
-        if self.reuse {
-            self.frame.free(r);
-        }
+        self.frame.free(r);
     }
 
     pub fn reg(&self, name: &str) -> Word {
@@ -354,6 +350,7 @@ pub struct CellModel {
     pub iv: Variable,
     pub params: Vec<Variable>,
     pub states: Vec<Variable>,
+    #[allow(dead_code)]
     pub algs: Vec<Equation>,
     pub odes: Vec<Equation>,
     pub obs: Vec<Equation>,

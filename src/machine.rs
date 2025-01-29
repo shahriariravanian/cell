@@ -6,7 +6,6 @@ use std::io::Write;
 use super::code::BinaryFunc;
 use super::utils::*;
 
-#[derive(Debug)]
 pub struct MachineCode {
     p: *const u8,
     mmap: Mmap, // we need to store mmap and fs here, so that they are not dropped

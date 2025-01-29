@@ -52,20 +52,20 @@ fn main() {
     let text = fs::read_to_string(args[2].as_str()).unwrap();
     let ml = CellModel::load(&text).unwrap();
 
-    let (ty, reuse) = match args[1].as_str() {
-        "bytecode" => (CompilerType::ByteCode, true),
-        "arm" => (CompilerType::Arm, true),
-        "amd" => (CompilerType::Amd, true),
-        "native" => (CompilerType::Native, true),
-        "wasm" => (CompilerType::Wasm, true),
-        "rusty" => (CompilerType::Rusty, true),
+    let ty = match args[1].as_str() {
+        "bytecode" => CompilerType::ByteCode,
+        "arm" => CompilerType::Arm,
+        "amd" => CompilerType::Amd,
+        "native" => CompilerType::Native,
+        "wasm" => CompilerType::Wasm,
+        "rusty" => CompilerType::Rusty,
         _ => {
             println!("compiler type should be one of bytecode, amd, arm, native, wasm, or. rusty");
             std::process::exit(0);
         }
     };
 
-    let prog = Program::new(&ml, reuse);
+    let prog = Program::new(&ml);
     let mut r = Runnable::new(prog, ty);
     solve(&mut r);
 }

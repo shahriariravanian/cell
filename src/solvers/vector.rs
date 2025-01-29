@@ -2,8 +2,6 @@ use std::ops::{Add, Div, Mul, Sub};
 use std::ops::{AddAssign, DivAssign, MulAssign, SubAssign};
 use std::ops::{Deref, DerefMut};
 
-use crate::utils::*;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Vector(pub Vec<f64>);
 

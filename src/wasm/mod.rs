@@ -16,19 +16,9 @@ enum ArgType {
 #[derive(Debug)]
 enum OpType {
     Nop(ArgType), // not implemented yet!
-    Unary(&'static str, ArgType, ArgType),
-    Binary(&'static str, ArgType, ArgType, ArgType),
-    Ternary(&'static str, ArgType, ArgType, ArgType, ArgType),
-}
-
-#[derive(Debug, Clone)]
-struct Op {
-    op: String,
-    x: Option<Word>,
-    y: Option<Word>,
-    z: Option<Word>,
-    dst: Option<Word>,
-    store: bool,
+    Unary(&'static str),
+    Binary(&'static str),
+    Ternary(&'static str),
 }
 
 #[derive(Debug)]
@@ -59,46 +49,38 @@ impl WasmCompiler {
 
     fn op_code(&mut self, op: &str) -> OpType {
         match op {
-            "mov" => OpType::Unary("f64.store", ArgType::F64, ArgType::F64),
-            "neg" => OpType::Unary("f64.neg", ArgType::F64, ArgType::F64),
-            "sin" => OpType::Unary("call $sin", ArgType::F64, ArgType::F64),
-            "cos" => OpType::Unary("call $cos", ArgType::F64, ArgType::F64),
-            "tan" => OpType::Unary("call $tan", ArgType::F64, ArgType::F64),
-            "csc" => OpType::Unary("call $csc", ArgType::F64, ArgType::F64),
-            "sec" => OpType::Unary("call $sec", ArgType::F64, ArgType::F64),
-            "cot" => OpType::Unary("call $cot", ArgType::F64, ArgType::F64),
-            "arcsin" => OpType::Unary("call $asin", ArgType::F64, ArgType::F64),
-            "arccos" => OpType::Unary("call $acos", ArgType::F64, ArgType::F64),
-            "arctan" => OpType::Unary("call $atan", ArgType::F64, ArgType::F64),
-            "exp" => OpType::Unary("call $exp", ArgType::F64, ArgType::F64),
-            "ln" => OpType::Unary("call $ln", ArgType::F64, ArgType::F64),
-            "log" => OpType::Unary("call $log", ArgType::F64, ArgType::F64),
-            "root" => OpType::Unary("f64.sqrt", ArgType::F64, ArgType::F64),
+            "mov" => OpType::Unary("f64.store"),
+            "neg" => OpType::Unary("f64.neg"),
+            "sin" => OpType::Unary("call $sin"),
+            "cos" => OpType::Unary("call $cos"),
+            "tan" => OpType::Unary("call $tan"),
+            "csc" => OpType::Unary("call $csc"),
+            "sec" => OpType::Unary("call $sec"),
+            "cot" => OpType::Unary("call $cot"),
+            "arcsin" => OpType::Unary("call $asin"),
+            "arccos" => OpType::Unary("call $acos"),
+            "arctan" => OpType::Unary("call $atan"),
+            "exp" => OpType::Unary("call $exp"),
+            "ln" => OpType::Unary("call $ln"),
+            "log" => OpType::Unary("call $log"),
+            "root" => OpType::Unary("f64.sqrt"),
 
-            "plus" => OpType::Binary("f64.add", ArgType::F64, ArgType::F64, ArgType::F64),
-            "minus" => OpType::Binary("f64.sub", ArgType::F64, ArgType::F64, ArgType::F64),
-            "times" => OpType::Binary("f64.mul", ArgType::F64, ArgType::F64, ArgType::F64),
-            "divide" => OpType::Binary("f64.div", ArgType::F64, ArgType::F64, ArgType::F64),
-            "rem" => OpType::Binary("call $rem", ArgType::F64, ArgType::F64, ArgType::F64),
-            "power" => OpType::Binary("call $power", ArgType::F64, ArgType::F64, ArgType::F64),
-            "gt" => OpType::Binary("f64.gt", ArgType::I32, ArgType::F64, ArgType::F64),
-            "geq" => OpType::Binary("f64.ge", ArgType::I32, ArgType::F64, ArgType::F64),
-            "lt" => OpType::Binary("f64.lt", ArgType::I32, ArgType::F64, ArgType::F64),
-            "leq" => OpType::Binary("f64.le", ArgType::I32, ArgType::F64, ArgType::F64),
-            "eq" => OpType::Binary("f64.eq", ArgType::I32, ArgType::F64, ArgType::F64),
-            "neq" => OpType::Binary("f64.ne", ArgType::I32, ArgType::F64, ArgType::F64),
-            "and" => OpType::Binary("i32.and", ArgType::I32, ArgType::I32, ArgType::I32),
-            "or" => OpType::Binary("i32.or", ArgType::I32, ArgType::I32, ArgType::I32),
-            "xor" => OpType::Binary("i32.xor", ArgType::I32, ArgType::I32, ArgType::I32),
-            //"if_pos" => OpType::Binary("call $if_pos", ArgType::F64, ArgType::I32, ArgType::F64),
-            //"if_neg" => OpType::Binary("call $if_neg", ArgType::F64, ArgType::I32, ArgType::F64),
-            "select" => OpType::Ternary(
-                "select",
-                ArgType::F64,
-                ArgType::F64,
-                ArgType::F64,
-                ArgType::I32,
-            ),
+            "plus" => OpType::Binary("f64.add"),
+            "minus" => OpType::Binary("f64.sub"),
+            "times" => OpType::Binary("f64.mul"),
+            "divide" => OpType::Binary("f64.div"),
+            "rem" => OpType::Binary("call $rem"),
+            "power" => OpType::Binary("call $power"),
+            "gt" => OpType::Binary("f64.gt"),
+            "geq" => OpType::Binary("f64.ge"),
+            "lt" => OpType::Binary("f64.lt"),
+            "leq" => OpType::Binary("f64.le"),
+            "eq" => OpType::Binary("f64.eq"),
+            "neq" => OpType::Binary("f64.ne"),
+            "and" => OpType::Binary("i32.and"),
+            "or" => OpType::Binary("i32.or"),
+            "xor" => OpType::Binary("i32.xor"),
+            "select" => OpType::Ternary("select"),
             _ => {
                 let msg = format!("op_code {} not found", op);
                 panic!("{}", msg);
@@ -127,29 +109,37 @@ impl WasmCompiler {
             self.push(cmd.as_str());
         }
     }
-}
 
-impl Compiler<WasmCode> for WasmCompiler {
-    fn compile(&mut self, prog: &Program) -> WasmCode {
+    fn prologue(&mut self) {
         self.push("(module");
         self.imports();
         self.push("(memory $memory 1)");
         self.push("(export \"memory\" (memory $memory))");
-
         self.push("(func $run");
+    }
+
+    fn epilogue(&mut self) {
+        self.push(")"); // (func $run
+        self.push("(export \"run\" (func $run))");
+        self.push(")"); // (module
+    }
+}
+
+impl Compiler<WasmCode> for WasmCompiler {
+    fn compile(&mut self, prog: &Program) -> WasmCode {
+        self.prologue();
 
         for c in prog.code.iter() {
-            // self.push(format!(";; {}", c).as_str());
             match c {
                 Instruction::Unary { op, .. } => {
-                    if let OpType::Unary(s, ..) = self.op_code(op) {
+                    if let OpType::Unary(s) = self.op_code(op) {
                         self.push(s);
                     } else {
                         panic!("unkown unary op");
                     }
                 }
                 Instruction::Binary { op, .. } => {
-                    if let OpType::Binary(s, ..) = self.op_code(op) {
+                    if let OpType::Binary(s) = self.op_code(op) {
                         self.push(s);
                     } else {
                         panic!("unkown binary op");
@@ -169,9 +159,7 @@ impl Compiler<WasmCode> for WasmCompiler {
             }
         }
 
-        self.push(")"); // (func $run
-        self.push("(export \"run\" (func $run))");
-        self.push(")"); // (module
+        self.epilogue();
 
         // println!("{}", self.buf);
 
