@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use super::code::Instruction;
 use super::model::Program;
@@ -23,7 +23,7 @@ impl Analyzer {
                 Instruction::Unary { op, x, dst, .. } => {
                     events.push(Event::Consumer(*x));
                     events.push(Event::Caller(op.clone()));
-                    events.push(Event::Producer(*dst));
+                    events.push(Event::Producer(*dst));                    
                 }
                 Instruction::Binary { op, x, y, dst, .. } => {
                     events.push(Event::Consumer(*x));
@@ -49,9 +49,9 @@ impl Analyzer {
         A saveable register is produced but is not consumed immediately
         In other words, it cannot be coalesced over consecuative instructions
     */
-    pub fn find_saveables(&self) -> HashSet<Word> {
+    pub fn find_saveable(&self) -> HashSet<Word> {
         let mut candidates: Vec<Word> = Vec::new();
-        let mut saveables: HashSet<Word> = HashSet::new();
+        let mut saveable: HashSet<Word> = HashSet::new();
 
         for l in self.events.iter() {
             match l {
@@ -62,7 +62,7 @@ impl Analyzer {
                     let r = candidates.pop();
 
                     if candidates.contains(c) {
-                        saveables.insert(*c);
+                        saveable.insert(*c);
                     };
 
                     if r.is_some() {
@@ -73,7 +73,7 @@ impl Analyzer {
             }
         }
 
-        saveables
+        saveable
     }
 
     /*

@@ -162,7 +162,7 @@ impl Compiler<MachineCode> for ArmCompiler {
         let mut r = Frame::ZERO;
 
         let analyzer = Analyzer::new(prog);
-        let saveables = analyzer.find_saveables();
+        let saveable = analyzer.find_saveable();
         let bufferable = analyzer.find_bufferable();
 
         for c in prog.code.iter() {
@@ -236,7 +236,7 @@ impl Compiler<MachineCode> for ArmCompiler {
             // A saveable register can be saved directly or buffered
             // However, if it is buffered, self.dump_buffer() should be
             // uncommented in fn op_code
-            if saveables.contains(&r) {
+            if saveable.contains(&r) {
                 self.save_xmm_indirect(Self::D0, r);
                 r = Frame::ZERO;
             }

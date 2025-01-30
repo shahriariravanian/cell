@@ -7,6 +7,12 @@ use std::error::Error;
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Word(pub usize, pub usize); // index, version
 
+impl Word {
+    pub fn is_temp(&self) -> bool {
+        self.1 != 0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 // Adjacency tagging (https://serde.rs/enum-representations.html)
 #[serde(tag = "t", content = "c")]
@@ -35,6 +41,7 @@ impl WordType {
 #[derive(Debug)]
 pub struct Frame {
     pub words: Vec<WordType>,
+    pub stack: Vec<WordType>,
     pub named: HashMap<String, usize>,
     pub freed: Vec<Word>,
 }
@@ -48,6 +55,7 @@ impl Frame {
     pub fn new() -> Frame {
         let mut f = Frame {
             words: Vec::new(),
+            stack: Vec::new(),
             named: HashMap::new(),
             freed: Vec::new(),
         };
@@ -65,9 +73,9 @@ impl Frame {
             Word(idx, k + 1) // because temps can share the same memory, version
                              // is increased to differentiate different temps
         } else {
-            let idx = self.words.len();
-            self.words.push(WordType::Temp);
-            Word(idx, 0)
+            let idx = self.stack.len();            
+            self.stack.push(WordType::Temp);
+            Word(idx, 1)
         }
     }
 
@@ -97,12 +105,14 @@ impl Frame {
 
     pub fn free(&mut self, r: Word) {
         // only Temp tegisters can be recycled
-        if let WordType::Temp = self.words[r.0] {
+        //if let WordType::Temp = self.words[r.0] {
+        if r.is_temp() {
             self.freed.push(r);
         };
     }
 
     pub fn is_diff(&self, r: &Word) -> bool {
+        if r.is_temp() { return false; }
         if let WordType::Diff(_) = self.words[r.0] {
             true
         } else {
@@ -111,14 +121,18 @@ impl Frame {
     }
 
     pub fn is_temp(&self, r: &Word) -> bool {
+        r.is_temp()
+        /*
         if let WordType::Temp = self.words[r.0] {
             true
         } else {
             false
         }
+        */
     }
 
     pub fn is_obs(&self, r: &Word) -> bool {
+        if r.is_temp() { return false; }
         if let WordType::Obs(_) = self.words[r.0] {
             true
         } else {
@@ -180,6 +194,10 @@ impl Frame {
             .iter()
             .map(|x| x.value().unwrap_or(0.0))
             .collect::<Vec<f64>>()
+    }
+    
+    pub fn stack_size(&self) -> usize {
+        self.stack.len()
     }
 
     pub fn as_json(&self) -> Result<String, Box<dyn Error>> {

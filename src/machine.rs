@@ -58,6 +58,6 @@ impl Compiled for MachineCode {
 
 impl Drop for MachineCode {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.name);
+        // let _ = fs::remove_file(&self.name);
     }
 }

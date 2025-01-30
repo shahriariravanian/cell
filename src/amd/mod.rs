@@ -1,6 +1,8 @@
 #[macro_use]
 mod macros;
 
+use std::collections::HashSet;
+
 use super::analyzer::Analyzer;
 use super::code::*;
 use super::machine::MachineCode;
@@ -11,8 +13,9 @@ use super::utils::*;
 #[derive(Debug)]
 pub struct AmdCompiler {
     machine_code: Vec<u8>,
-    x4: Option<Word>,
-    x5: Option<Word>,
+    buf: Vec<Option<Word>>,    
+    stack_ptr: usize,
+    stack_size: usize,
 }
 
 impl AmdCompiler {
@@ -28,8 +31,9 @@ impl AmdCompiler {
     pub fn new() -> AmdCompiler {
         Self {
             machine_code: Vec::new(),
-            x4: None,
-            x5: None,
+            buf: vec![None, None, None, None],
+            stack_ptr: 0,
+            stack_size: 0,
         }
     }
 
@@ -76,85 +80,69 @@ impl AmdCompiler {
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {
         if r == Frame::ZERO {
             self.push_vec(amd! {xorpd xmm(x), xmm(x)});
+        } else if r.is_temp() {
+            assert!(self.stack_ptr > 0);
+            self.stack_ptr -= 1;
+            let k = self.stack_ptr;            
+            self.push_vec(amd! {movsd xmm(x), qword ptr [rsp+8*k]});
         } else {
             self.push_vec(amd! {movsd xmm(x), qword ptr [rbp+8*r.0]});
         }
     }
 
     fn save_xmm_indirect(&mut self, x: u8, r: Word) {
-        if r.0 > 2 {
+        if r.is_temp() {
+            let k = self.stack_ptr;
+            self.stack_ptr += 1;
+            self.stack_size = usize::max(self.stack_size, self.stack_ptr);
+            self.push_vec(amd! {movsd qword ptr [rsp+8*k], xmm(x)});
+        } else {
             self.push_vec(amd! {movsd qword ptr [rbp+8*r.0], xmm(x)});
-        }
+        }        
     }
 
     fn load_buffered(&mut self, x: u8, r: Word) {
-        if self.x4.is_some_and(|s| s == r) {
-            self.push_vec(amd! {movapd xmm(x), xmm(4)});
-            self.x4 = None;
-            return;
+        for (k, b) in self.buf.iter().enumerate() {
+            if b.is_some_and(|s| s == r) {
+                self.push_vec(amd! {movapd xmm(x), xmm((4+k) as u8)});
+                self.buf[k] = None;
+                return;
+            }        
         }
-
-        if self.x5.is_some_and(|s| s == r) {
-            self.push_vec(amd! {movapd xmm(x), xmm(5)});
-            self.x5 = None;
-            return;
-        }
-
+        
         self.load_xmm_indirect(x, r);
     }
 
     fn save_buffered(&mut self, x: u8, r: Word) {
-        if self.x4.is_none() {
-            self.push_vec(amd! {movapd xmm(4), xmm(x)});
-            self.x4 = Some(r);
-            return;
-        }
-
-        if self.x5.is_none() {
-            self.push_vec(amd! {movapd xmm(5), xmm(x)});
-            self.x5 = Some(r);
-            return;
+        for (k, b) in self.buf.iter().enumerate() {
+            if b.is_none() {
+                self.push_vec(amd! {movapd xmm((4+k) as u8), xmm(x)});
+                self.buf[k] = Some(r);
+                return;
+            }
         }
 
         self.save_xmm_indirect(x, r);
     }
 
-    fn dump_buffer(&mut self) {
-        if let Some(s) = self.x4 {
-            self.save_xmm_indirect(Self::XMM4, s);
-            self.x4 = None;
-        }
-
-        if let Some(s) = self.x5 {
-            self.save_xmm_indirect(Self::XMM5, s);
-            self.x5 = None;
-        }
-    }
-
-    fn prologue(&mut self) {
+    fn prologue(&mut self, n: usize) {
         self.push_vec(amd! {push rbp});
         self.push_vec(amd! {push rbx});
         self.push_vec(amd! {mov rbp, rdi});
         self.push_vec(amd! {mov rbx, rdx});
+        self.push_vec(amd! {sub rsp, n});
     }
 
-    fn epilogue(&mut self) {
+    fn epilogue(&mut self, n: usize) {
+        self.push_vec(amd! {add rsp, n});
         self.push_vec(amd! {pop rbx});
         self.push_vec(amd! {pop rbp});
         self.push_vec(amd! {ret});
     }
-}
-
-impl Compiler<MachineCode> for AmdCompiler {
-    fn compile(&mut self, prog: &Program) -> MachineCode {
-        self.prologue();
-
+    
+    fn codegen(&mut self, prog: &Program, saveable: &HashSet<Word>, bufferable: &HashSet<Word>) {
         let mut r = Frame::ZERO;
-
-        let analyzer = Analyzer::new(prog);
-        let saveables = analyzer.find_saveables();
-        let bufferable = analyzer.find_bufferable();
-
+    
         for c in prog.code.iter() {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
@@ -218,7 +206,7 @@ impl Compiler<MachineCode> for AmdCompiler {
 
             // A bufferable register can be buffered without the
             // need for self.dump_buffer()
-            if bufferable.contains(&r) {
+            if bufferable.contains(&r) {                
                 self.save_buffered(Self::XMM0, r);
                 r = Frame::ZERO;
             }
@@ -226,15 +214,26 @@ impl Compiler<MachineCode> for AmdCompiler {
             // A saveable register can be saved directly or buffered
             // However, if it is buffered, self.dump_buffer() should be
             // uncommented in fn op_code
-            if saveables.contains(&r) {
+            if saveable.contains(&r) {
                 self.save_xmm_indirect(Self::XMM0, r);
                 r = Frame::ZERO;
             }
         }
+    }
+}
 
-        self.epilogue();
-
-        // println!("{}", &self.assembler);
+impl Compiler<MachineCode> for AmdCompiler {
+    fn compile(&mut self, prog: &Program) -> MachineCode {                
+        let analyzer = Analyzer::new(prog);
+        let saveable = analyzer.find_saveable();
+        let bufferable = analyzer.find_bufferable();
+        
+        self.codegen(prog, &saveable, &bufferable);             
+        self.machine_code.clear();        
+        let n = 8 * self.stack_size;
+        self.prologue(n);
+        self.codegen(prog, &saveable, &bufferable);
+        self.epilogue(n);
 
         MachineCode::new(
             &self.machine_code.clone(),

@@ -63,19 +63,27 @@ macro_rules! modrm_mem {
         let dst = $dst;
         let base = $base;
         let offset = $offset;
-
+        
+        let mut v = if offset < 128 { 
+            vec![0x40 + (dst << 3) + base]
+        } else { 
+            vec![0x80 + (dst << 3) + base] 
+        };
+        
+        if base == 4 {  // rsp
+            v.push(0x24);   // SIB byte
+        }        
+        
         if offset < 128 {
-            // note: disp8 is 2's complement
-            vec![0x40 + (dst << 3) + base, offset as u8]
+            v.push(offset as u8)
         } else {
-            vec![
-                0x80 + (dst << 3) + base,
-                offset as u8,
-                (offset >> 8) as u8,
-                (offset >> 16) as u8,
-                (offset >> 24) as u8,
-            ]
-        }
+            v.push(offset as u8);
+            v.push((offset >> 8) as u8);
+            v.push((offset >> 16) as u8);
+            v.push((offset >> 24) as u8);
+        };
+        
+        v
     }};
 }
 
@@ -226,7 +234,29 @@ macro_rules! amd {
             }
         }
     };
-    (ret) => { vec![0xc3] }
+    (ret) => { vec![0xc3] };
+    (add rsp, $imm:expr) => {
+        {
+            let imm = $imm as u32;
+            let mut v = vec![0x48, 0x81, 0xc4];
+            v.push(imm as u8);
+            v.push((imm >> 8) as u8);
+            v.push((imm >> 16) as u8);
+            v.push((imm >> 24) as u8);
+            v
+        }
+    };
+    (sub rsp, $imm:expr) => {
+        {
+            let imm = $imm as u32;
+            let mut v = vec![0x48, 0x81, 0xec];
+            v.push(imm as u8);
+            v.push((imm >> 8) as u8);
+            v.push((imm >> 16) as u8);
+            v.push((imm >> 24) as u8);
+            v
+        }
+    };
 }
 
 #[test]
@@ -273,4 +303,6 @@ fn test_amd() {
     assert_eq!(vec![0x66, 0x48, 0x0f, 0x6e, 0xe9], amd! {movq xmm(5),rcx});
     assert_eq!(vec![0x5d], amd! {pop rbp});
     assert_eq!(vec![0xc3], amd! {ret});
+    assert_eq!(vec![0x48, 0x81, 0xc4, 0x34, 0x12, 0x00, 0x00], amd! {add rsp,0x1234});
+    assert_eq!(vec![0x48, 0x81, 0xec, 0x21, 0x43, 0x00, 0x00], amd! {sub rsp,0x4321});
 }
