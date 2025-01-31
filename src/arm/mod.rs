@@ -1,7 +1,9 @@
 #[macro_use]
 mod macros;
 
-use super::analyzer::Analyzer;
+use std::collections::HashSet;
+
+use super::analyzer::{Analyzer, Renamer, Stack};
 use super::code::*;
 use super::machine::MachineCode;
 use super::model::Program;
@@ -13,6 +15,7 @@ pub struct ArmCompiler {
     machine_code: Vec<u8>,
     x4: Option<Word>,
     x5: Option<Word>,
+    stack: Stack,
 }
 
 impl ArmCompiler {
@@ -30,6 +33,7 @@ impl ArmCompiler {
             machine_code: Vec::new(),
             x4: None,
             x5: None,
+            stack: Stack::new(),
         }
     }
 
@@ -84,13 +88,19 @@ impl ArmCompiler {
             self.push_u32(arm! {fmov d(x), #1.0});
         } else if r == Frame::MINUS_ONE {
             self.push_u32(arm! {fmov d(x), #-1.0});
+        } else if r.is_temp() {
+            let k = self.stack.pop(&r);            
+            self.push_u32(arm! {ldr d(x), [sp, #8*k]});
         } else {
             self.push_u32(arm! {ldr d(x), [x(19), #8*r.0]});
         }
     }
 
     fn save_xmm_indirect(&mut self, x: u8, r: Word) {
-        if r.0 > 2 {
+        if r.is_temp() {
+            let k = self.stack.push(&r);
+            self.push_u32(arm! {str d(x), [sp, #8*k]});
+        } else {
             self.push_u32(arm! {str d(x), [x(19), #8*r.0]});
         }
     }
@@ -139,32 +149,26 @@ impl ArmCompiler {
         }
     }
 
-    fn prologue(&mut self) {
+    fn prologue(&mut self, n: usize) {
         self.push_u32(arm! {sub sp, sp, #32});
         self.push_u32(arm! {str lr, [sp, #0]});
         self.push_u32(arm! {stp x(19), x(20), [sp, #16]});
         self.push_u32(arm! {mov x(19), x(0)});
         self.push_u32(arm! {mov x(20), x(2)});
+        self.push_u32(arm! {sub sp, sp, #n});
     }
 
-    fn epilogue(&mut self) {
+    fn epilogue(&mut self, n: usize) {
+        self.push_u32(arm! {add sp, sp, #n});
         self.push_u32(arm! {ldp x(19), x(20), [sp, #16]});
         self.push_u32(arm! {ldr lr, [sp, #0]});
         self.push_u32(arm! {add sp, sp, #32});
         self.push_u32(arm! {ret});
     }
-}
-
-impl Compiler<MachineCode> for ArmCompiler {
-    fn compile(&mut self, prog: &Program) -> MachineCode {
-        self.prologue();
-
+    
+    fn codegen(&mut self, prog: &Program, saveable: &HashSet<Word>, bufferable: &HashSet<Word>) {
         let mut r = Frame::ZERO;
-
-        let analyzer = Analyzer::new(prog);
-        let saveable = analyzer.find_saveable();
-        let bufferable = analyzer.find_bufferable();
-
+        
         for c in prog.code.iter() {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
@@ -240,9 +244,22 @@ impl Compiler<MachineCode> for ArmCompiler {
                 self.save_xmm_indirect(Self::D0, r);
                 r = Frame::ZERO;
             }
-        }
+        }    
+    }
+}
 
-        self.epilogue();
+impl Compiler<MachineCode> for ArmCompiler {
+    fn compile(&mut self, prog: &Program) -> MachineCode {
+        let analyzer = Analyzer::new(prog);
+        let saveable = analyzer.find_saveable();
+        let bufferable = analyzer.find_bufferable();
+        
+        self.codegen(prog, &saveable, &bufferable);             
+        self.machine_code.clear();        
+        let n = 8 * ((self.stack.capacity() + 1) & 0xfff7);
+        self.prologue(n);
+        self.codegen(prog, &saveable, &bufferable);
+        self.epilogue(n);
 
         MachineCode::new(
             &self.machine_code.clone(),

@@ -3,7 +3,7 @@ mod macros;
 
 use std::collections::HashSet;
 
-use super::analyzer::Analyzer;
+use super::analyzer::{Analyzer, Renamer, Stack};
 use super::code::*;
 use super::machine::MachineCode;
 use super::model::Program;
@@ -14,8 +14,8 @@ use super::utils::*;
 pub struct AmdCompiler {
     machine_code: Vec<u8>,
     buf: Vec<Option<Word>>,    
-    stack_ptr: usize,
-    stack_size: usize,
+    stack: Stack,
+    renamer: Renamer,
 }
 
 impl AmdCompiler {
@@ -32,79 +32,84 @@ impl AmdCompiler {
         Self {
             machine_code: Vec::new(),
             buf: vec![None, None, None, None],
-            stack_ptr: 0,
-            stack_size: 0,
+            stack: Stack::new(),
+            renamer: Renamer::new(8),
         }
     }
 
     pub fn push_vec(&mut self, v: Vec<u8>) {
         self.machine_code.extend_from_slice(&v[..]);
     }
+    
+    fn n(&self, x: u8) -> u8 {
+        self.renamer.get(x)
+    }
 
-    fn op_code(&mut self, op: &str, p: Proc) {
+    fn op_code(&mut self, op: &str, p: Proc) {                
         match op {
             "mov" => {}
-            "plus" => self.push_vec(amd! {addsd xmm(0), xmm(1)}),
-            "minus" => self.push_vec(amd! {subsd xmm(0), xmm(1)}),
-            "times" => self.push_vec(amd! {mulsd xmm(0), xmm(1)}),
-            "divide" => self.push_vec(amd! {divsd xmm(0), xmm(1)}),
-            "gt" => self.push_vec(amd! {cmpnlesd xmm(0), xmm(1)}),
-            "geq" => self.push_vec(amd! {cmpnltsd xmm(0), xmm(1)}),
-            "lt" => self.push_vec(amd! {cmpltsd xmm(0), xmm(1)}),
-            "leq" => self.push_vec(amd! {cmplesd xmm(0), xmm(1)}),
-            "eq" => self.push_vec(amd! {cmpeqsd xmm(0), xmm(1)}),
-            "neq" => self.push_vec(amd! {cmpneqsd xmm(0), xmm(1)}),
-            "and" => self.push_vec(amd! {andpd xmm(0), xmm(1)}),
-            "or" => self.push_vec(amd! {orpd xmm(0), xmm(1)}),
-            "xor" => self.push_vec(amd! {xorpd xmm(0), xmm(1)}),
+            "plus" => self.push_vec(amd! {addsd xmm(self.n(0)), xmm(self.n(1))}),
+            "minus" => self.push_vec(amd! {subsd xmm(self.n(0)), xmm(self.n(1))}),
+            "times" => self.push_vec(amd! {mulsd xmm(self.n(0)), xmm(self.n(1))}),
+            "divide" => self.push_vec(amd! {divsd xmm(self.n(0)), xmm(self.n(1))}),
+            "gt" => self.push_vec(amd! {cmpnlesd xmm(self.n(0)), xmm(self.n(1))}),
+            "geq" => self.push_vec(amd! {cmpnltsd xmm(self.n(0)), xmm(self.n(1))}),
+            "lt" => self.push_vec(amd! {cmpltsd xmm(self.n(0)), xmm(self.n(1))}),
+            "leq" => self.push_vec(amd! {cmplesd xmm(self.n(0)), xmm(self.n(1))}),
+            "eq" => self.push_vec(amd! {cmpeqsd xmm(self.n(0)), xmm(self.n(1))}),
+            "neq" => self.push_vec(amd! {cmpneqsd xmm(self.n(0)), xmm(self.n(1))}),
+            "and" => self.push_vec(amd! {andpd xmm(self.n(0)), xmm(self.n(1))}),
+            "or" => self.push_vec(amd! {orpd xmm(self.n(0)), xmm(self.n(1))}),
+            "xor" => self.push_vec(amd! {xorpd xmm(self.n(0)), xmm(self.n(1))}),
             "neg" => {
-                self.push_vec(amd! {movsd xmm(1), qword ptr [rbp+8*Frame::MINUS_ZERO.0]});
-                self.push_vec(amd! {xorpd xmm(0), xmm(1)});
+                self.push_vec(amd! {movsd xmm(self.n(1)), qword ptr [rbp+8*Frame::MINUS_ZERO.0]});
+                self.push_vec(amd! {xorpd xmm(self.n(0)), xmm(self.n(1))});
             }
             _ => {
                 // self.dump_buffer();
+                if self.n(0) != 0 {
+                    self.push_vec(amd! {movapd xmm(0), xmm(self.n(0))});
+                }
+                self.renamer.reset();
                 self.push_vec(amd! {mov rax, qword ptr [rbx+8*p.0]});
                 self.push_vec(amd! {call rax});
             }
         }
     }
 
-    // xmm(2) == true ? xmm(0) : xmm(1)
-    fn ifelse(&mut self) {
-        self.push_vec(amd! {movapd xmm(3), xmm(2)});
-        self.push_vec(amd! {andpd xmm(0), xmm(2)});
-        self.push_vec(amd! {andnpd xmm(3), xmm(1)});
-        self.push_vec(amd! {orpd xmm(0), xmm(3)});
+    // xmm(self.n(2)) == true ? xmm(self.n(0)) : xmm(self.n(1))
+    fn ifelse(&mut self) {        
+        self.push_vec(amd! {movapd xmm(self.n(3)), xmm(self.n(2))});        
+        self.push_vec(amd! {andpd xmm(self.n(0)), xmm(self.n(2))});
+        self.push_vec(amd! {andnpd xmm(self.n(3)), xmm(self.n(1))});
+        self.push_vec(amd! {orpd xmm(self.n(0)), xmm(self.n(3))});
     }
 
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {
         if r == Frame::ZERO {
-            self.push_vec(amd! {xorpd xmm(x), xmm(x)});
+            self.push_vec(amd! {xorpd xmm(self.n(x)), xmm(self.n(x))});
         } else if r.is_temp() {
-            assert!(self.stack_ptr > 0);
-            self.stack_ptr -= 1;
-            let k = self.stack_ptr;            
-            self.push_vec(amd! {movsd xmm(x), qword ptr [rsp+8*k]});
+            let k = self.stack.pop(&r);            
+            self.push_vec(amd! {movsd xmm(self.n(x)), qword ptr [rsp+8*k]});
         } else {
-            self.push_vec(amd! {movsd xmm(x), qword ptr [rbp+8*r.0]});
+            self.push_vec(amd! {movsd xmm(self.n(x)), qword ptr [rbp+8*r.0]});
         }
     }
 
     fn save_xmm_indirect(&mut self, x: u8, r: Word) {
         if r.is_temp() {
-            let k = self.stack_ptr;
-            self.stack_ptr += 1;
-            self.stack_size = usize::max(self.stack_size, self.stack_ptr);
-            self.push_vec(amd! {movsd qword ptr [rsp+8*k], xmm(x)});
+            let k = self.stack.push(&r);
+            self.push_vec(amd! {movsd qword ptr [rsp+8*k], xmm(self.n(x))});
         } else {
-            self.push_vec(amd! {movsd qword ptr [rbp+8*r.0], xmm(x)});
+            self.push_vec(amd! {movsd qword ptr [rbp+8*r.0], xmm(self.n(x))});
         }        
     }
 
     fn load_buffered(&mut self, x: u8, r: Word) {
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_some_and(|s| s == r) {
-                self.push_vec(amd! {movapd xmm(x), xmm((4+k) as u8)});
+                //self.push_vec(amd! {movapd xmm(x), xmm((4+k) as u8)});
+                self.renamer.swap(x, (4+k) as u8);
                 self.buf[k] = None;
                 return;
             }        
@@ -113,10 +118,11 @@ impl AmdCompiler {
         self.load_xmm_indirect(x, r);
     }
 
-    fn save_buffered(&mut self, x: u8, r: Word) {
+    fn save_buffered(&mut self, x: u8, r: Word) {        
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_none() {
-                self.push_vec(amd! {movapd xmm((4+k) as u8), xmm(x)});
+                // self.push_vec(amd! {movapd xmm((4+k) as u8), xmm(x)});
+                self.renamer.swap((4+k) as u8, x);
                 self.buf[k] = Some(r);
                 return;
             }
@@ -161,7 +167,8 @@ impl AmdCompiler {
                     };
 
                     if *y == r {
-                        self.push_vec(amd! {movapd xmm(1), xmm(0)});
+                        // self.push_vec(amd! {movapd xmm(self.n(1)), xmm(self.n(0))});
+                        self.renamer.swap(1, 0);
                     } else {
                         self.load_buffered(Self::XMM1, *y);
                     }
@@ -175,13 +182,15 @@ impl AmdCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        self.push_vec(amd! {movapd xmm(2), xmm(0)});
+                        // self.push_vec(amd! {movapd xmm(self.n(2)), xmm(self.n(0))});
+                        self.renamer.swap(2, 0);
                     } else {
                         self.load_buffered(Self::XMM2, *cond);
                     }
 
                     if *x2 == r {
-                        self.push_vec(amd! {movapd xmm(1), xmm(0)});
+                        // self.push_vec(amd! {movapd xmm(self.n(1)), xmm(self.n(0))});
+                        self.renamer.swap(1, 0);
                     } else {
                         self.load_buffered(Self::XMM1, *x2);
                     }
@@ -230,7 +239,7 @@ impl Compiler<MachineCode> for AmdCompiler {
         
         self.codegen(prog, &saveable, &bufferable);             
         self.machine_code.clear();        
-        let n = 8 * self.stack_size;
+        let n = 8 * self.stack.capacity();
         self.prologue(n);
         self.codegen(prog, &saveable, &bufferable);
         self.epilogue(n);
@@ -242,3 +251,6 @@ impl Compiler<MachineCode> for AmdCompiler {
         )
     }
 }
+
+
+

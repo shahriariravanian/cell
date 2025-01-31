@@ -117,3 +117,67 @@ impl Analyzer {
         bufferable
     }
 }
+
+/*********************************************/
+
+#[derive(Debug)]
+pub struct Renamer {
+    mapping: Vec<u8>
+}
+
+impl Renamer {
+    pub fn new(n: u8) -> Renamer {
+        let mapping: Vec<u8> = (0..n).collect();
+        Renamer { mapping }
+    }
+    
+    pub fn reset(&mut self) {
+        for i in 0..self.mapping.len() {
+            self.mapping[i] = i as u8;
+        }
+    }
+    
+    pub fn get(&self, i: u8) -> u8 {
+        self.mapping[i as usize]
+    }
+    
+    pub fn swap(&mut self, i: u8, j: u8) {
+        let i = i as usize;
+        let j = j as usize;
+        let t = self.mapping[i];
+        self.mapping[i] = self.mapping[j];
+        self.mapping[j] = t;
+    }
+}
+
+#[derive(Debug)]
+pub struct Stack {
+    stack: Vec<Word>,
+    cap: usize
+}
+
+impl Stack {
+    pub fn new() -> Stack {
+        Stack{
+            stack: Vec::new(),
+            cap: 0
+        }
+    }
+    
+    pub fn push(&mut self, w: &Word) -> usize {
+        self.stack.push(*w);
+        self.cap = usize::max(self.cap, self.stack.len());
+        self.stack.len() - 1
+    }
+    
+    pub fn pop(&mut self, w: &Word) -> usize {
+        let p = self.stack.pop().expect("stack is empty");
+        assert!(*w == p);
+        self.stack.len() 
+    }
+    
+    pub fn capacity(&self) -> usize {
+        self.cap
+    }
+}
+
