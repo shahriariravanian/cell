@@ -13,8 +13,7 @@ use super::utils::*;
 #[derive(Debug)]
 pub struct ArmCompiler {
     machine_code: Vec<u8>,
-    x4: Option<Word>,
-    x5: Option<Word>,
+    buf: Vec<Option<Word>>,    
     stack: Stack,
 }
 
@@ -31,8 +30,7 @@ impl ArmCompiler {
     pub fn new() -> ArmCompiler {
         Self {
             machine_code: Vec::new(),
-            x4: None,
-            x5: None,
+            buf: vec![None, None, None, None],
             stack: Stack::new(),
         }
     }
@@ -104,49 +102,29 @@ impl ArmCompiler {
             self.push_u32(arm! {str d(x), [x(19), #8*r.0]});
         }
     }
-
+    
     fn load_buffered(&mut self, x: u8, r: Word) {
-        if self.x4.is_some_and(|s| s == r) {
-            self.push_u32(arm! {fmov d(x), d(4)});
-            self.x4 = None;
-            return;
+        for (k, b) in self.buf.iter().enumerate() {
+            if b.is_some_and(|s| s == r) {                
+                self.push_u32(arm! {fmov d(x), d(4+k)});
+                self.buf[k] = None;
+                return;
+            }        
         }
-
-        if self.x5.is_some_and(|s| s == r) {
-            self.push_u32(arm! {fmov d(x), d(5)});
-            self.x5 = None;
-            return;
-        }
-
+        
         self.load_xmm_indirect(x, r);
     }
 
-    fn save_buffered(&mut self, x: u8, r: Word) {
-        if self.x4.is_none() {
-            self.push_u32(arm! {fmov d(4), d(x)});
-            self.x4 = Some(r);
-            return;
-        }
-
-        if self.x5.is_none() {
-            self.push_u32(arm! {fmov d(5), d(x)});
-            self.x5 = Some(r);
-            return;
+    fn save_buffered(&mut self, x: u8, r: Word) {        
+        for (k, b) in self.buf.iter().enumerate() {
+            if b.is_none() {
+                self.push_u32(arm! {fmov d(4+k), d(x)});                
+                self.buf[k] = Some(r);
+                return;
+            }
         }
 
         self.save_xmm_indirect(x, r);
-    }
-
-    fn dump_buffer(&mut self) {
-        if let Some(s) = self.x4 {
-            self.save_xmm_indirect(Self::D4, s);
-            self.x4 = None;
-        }
-
-        if let Some(s) = self.x5 {
-            self.save_xmm_indirect(Self::D5, s);
-            self.x5 = None;
-        }
     }
 
     fn prologue(&mut self, n: usize) {
