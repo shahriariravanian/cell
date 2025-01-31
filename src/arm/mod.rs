@@ -116,7 +116,8 @@ impl ArmCompiler {
     fn load_buffered(&mut self, x: u8, r: Word) {
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_some_and(|s| s == r) {                
-                self.renamer.swap(x, (4+k) as u8);
+                self.push_u32(arm! {fmov d(self.n(x)), d(self.n(4+k))});
+                //self.renamer.swap(x, (4+k) as u8);
                 self.buf[k] = None;
                 return;
             }        
@@ -128,7 +129,8 @@ impl ArmCompiler {
     fn save_buffered(&mut self, x: u8, r: Word) {        
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_none() {
-                self.renamer.swap((4+k) as u8, x);
+                self.push_u32(arm! {fmov d(self.n(4+k)), d(self.n(x))});
+                // self.renamer.swap((4+k) as u8, x);
                 self.buf[k] = Some(r);
                 return;
             }
@@ -175,8 +177,8 @@ impl ArmCompiler {
                     };
 
                     if *y == r {
-                        // self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
-                        self.renamer.swap(1, 0);
+                        self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
+                        // self.renamer.swap(1, 0);
                     } else {
                         self.load_buffered(self.n(1), *y);
                     }
@@ -190,15 +192,15 @@ impl ArmCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        // self.push_u32(arm! {fmov d(self.n(2)), d(self.n(0))});
-                        self.renamer.swap(2, 0);
+                        self.push_u32(arm! {fmov d(self.n(2)), d(self.n(0))});
+                        // self.renamer.swap(2, 0);
                     } else {
                         self.load_buffered(self.n(2), *cond);
                     }
 
                     if *x2 == r {
-                        // self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
-                        self.renamer.swap(1, 0);
+                        self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
+                        // self.renamer.swap(1, 0);
                     } else {
                         self.load_buffered(self.n(1), *x2);
                     }
