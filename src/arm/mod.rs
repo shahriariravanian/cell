@@ -83,7 +83,7 @@ impl ArmCompiler {
 
     // d2 == true ? d0 : d1
     fn ifelse(&mut self) {
-        self.push_u32(arm! {and v(self.n(2)).8b, v(self.n(0)).8b, v(self.n(1)).8b});
+        self.push_u32(arm! {bsl v(self.n(2)).8b, v(self.n(0)).8b, v(self.n(1)).8b});
         self.renamer.swap(0, 2);
         // self.push_u32(arm! {and v(self.n(0)).8b, v(self.n(0)).8b, v(self.n(2)).8b});
         // self.push_u32(arm! {not v(self.n(2)).8b, v(self.n(2)).8b});
