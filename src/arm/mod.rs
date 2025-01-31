@@ -116,8 +116,8 @@ impl ArmCompiler {
     fn load_buffered(&mut self, x: u8, r: Word) {
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_some_and(|s| s == r) {                
-                self.push_u32(arm! {fmov d(self.n(x)), d(self.n(4+k))});
-                //self.renamer.swap(x, (4+k) as u8);
+                // self.push_u32(arm! {fmov d(self.n(x)), d(self.n((4+k) as u8))});
+                self.renamer.swap(x, (4+k) as u8);
                 self.buf[k] = None;
                 return;
             }        
@@ -129,8 +129,8 @@ impl ArmCompiler {
     fn save_buffered(&mut self, x: u8, r: Word) {        
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_none() {
-                self.push_u32(arm! {fmov d(self.n(4+k)), d(self.n(x))});
-                // self.renamer.swap((4+k) as u8, x);
+                // self.push_u32(arm! {fmov d(self.n((4+k) as u8)), d(self.n(x))});
+                self.renamer.swap((4+k) as u8, x);
                 self.buf[k] = Some(r);
                 return;
             }
@@ -163,7 +163,7 @@ impl ArmCompiler {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
                     if r != *x {
-                        self.load_buffered(self.n(0), *x);
+                        self.load_buffered(0, *x);
                     };
                     self.op_code(&op, *p);
                     r = *dst;
@@ -177,14 +177,14 @@ impl ArmCompiler {
                     };
 
                     if *y == r {
-                        self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
-                        // self.renamer.swap(1, 0);
+                        // self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
+                        self.renamer.swap(1, 0);
                     } else {
-                        self.load_buffered(self.n(1), *y);
+                        self.load_buffered(1, *y);
                     }
 
                     if *x != r {
-                        self.load_buffered(self.n(0), *x);
+                        self.load_buffered(0, *x);
                     }
 
                     self.op_code(&op, *p);
@@ -192,21 +192,21 @@ impl ArmCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        self.push_u32(arm! {fmov d(self.n(2)), d(self.n(0))});
-                        // self.renamer.swap(2, 0);
+                        // self.push_u32(arm! {fmov d(self.n(2)), d(self.n(0))});
+                        self.renamer.swap(2, 0);
                     } else {
-                        self.load_buffered(self.n(2), *cond);
+                        self.load_buffered(2, *cond);
                     }
 
                     if *x2 == r {
-                        self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
-                        // self.renamer.swap(1, 0);
+                        // self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
+                        self.renamer.swap(1, 0);
                     } else {
-                        self.load_buffered(self.n(1), *x2);
+                        self.load_buffered(1, *x2);
                     }
 
                     if *x1 != r {
-                        self.load_buffered(self.n(0), *x1);
+                        self.load_buffered(0, *x1);
                     }
 
                     self.ifelse();
