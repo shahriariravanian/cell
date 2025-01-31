@@ -15,6 +15,7 @@ pub struct ArmCompiler {
     machine_code: Vec<u8>,
     buf: Vec<Option<Word>>,    
     stack: Stack,
+    renamer: Renamer,
 }
 
 impl ArmCompiler {
@@ -32,6 +33,7 @@ impl ArmCompiler {
             machine_code: Vec::new(),
             buf: vec![None, None, None, None],
             stack: Stack::new(),
+            renamer: Renamer::new(8),
         }
     }
 
@@ -41,30 +43,38 @@ impl ArmCompiler {
         self.machine_code.push((w >> 16) as u8);
         self.machine_code.push((w >> 24) as u8);
     }
+    
+    fn n(&self, x: u8) -> u8 {
+        self.renamer.get(x)
+    }
 
     fn op_code(&mut self, op: &str, p: Proc) {
         match op {
             "mov" => {}
-            "plus" => self.push_u32(arm! {fadd d(0), d(0), d(1)}),
-            "minus" => self.push_u32(arm! {fsub d(0), d(0), d(1)}),
-            "times" => self.push_u32(arm! {fmul d(0), d(0), d(1)}),
-            "divide" => self.push_u32(arm! {fdiv d(0), d(0), d(1)}),
-            "gt" => self.push_u32(arm! {fcmgt d(0), d(0), d(1)}),
-            "geq" => self.push_u32(arm! {fcmge d(0), d(0), d(1)}),
-            "lt" => self.push_u32(arm! {fcmlt d(0), d(0), d(1)}),
-            "leq" => self.push_u32(arm! {fcmle d(0), d(0), d(1)}),
-            "eq" => self.push_u32(arm! {fcmeq d(0), d(0), d(1)}),
-            "and" => self.push_u32(arm! {and v(0).8b, v(0).8b, v(1).8b}),
-            "or" => self.push_u32(arm! {orr v(0).8b, v(0).8b, v(1).8b}),
-            "xor" => self.push_u32(arm! {eor v(0).8b, v(0).8b, v(1).8b}),
-            "neg" => self.push_u32(arm! {fneg d(0), d(0)}),
-            "root" => self.push_u32(arm! {fsqrt d(0), d(0)}),
+            "plus" => self.push_u32(arm! {fadd d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "minus" => self.push_u32(arm! {fsub d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "times" => self.push_u32(arm! {fmul d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "divide" => self.push_u32(arm! {fdiv d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "gt" => self.push_u32(arm! {fcmgt d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "geq" => self.push_u32(arm! {fcmge d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "lt" => self.push_u32(arm! {fcmlt d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "leq" => self.push_u32(arm! {fcmle d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "eq" => self.push_u32(arm! {fcmeq d(self.n(0)), d(self.n(0)), d(self.n(1))}),
+            "and" => self.push_u32(arm! {and v(self.n(0)).8b, v(self.n(0)).8b, v(self.n(1)).8b}),
+            "or" => self.push_u32(arm! {orr v(self.n(0)).8b, v(self.n(0)).8b, v(self.n(1)).8b}),
+            "xor" => self.push_u32(arm! {eor v(self.n(0)).8b, v(self.n(0)).8b, v(self.n(1)).8b}),
+            "neg" => self.push_u32(arm! {fneg d(self.n(0)), d(self.n(0))}),
+            "root" => self.push_u32(arm! {fsqrt d(self.n(0)), d(self.n(0))}),
             "neq" => {
-                self.push_u32(arm! {fcmeq d(0), d(0), d(1)});
-                self.push_u32(arm! {not v(0).8b, v(0).8b});
+                self.push_u32(arm! {fcmeq d(self.n(0)), d(self.n(0)), d(self.n(1))});
+                self.push_u32(arm! {not v(self.n(0)).8b, v(self.n(0)).8b});
             }
             _ => {
                 // self.dump_buffer();
+                 if self.n(0) != 0 {
+                    self.push_vec(arm! {mov d(0), d(self.n(0))});
+                }
+                self.renamer.reset();               
                 self.push_u32(arm! {ldr x(0), [x(20), #8*p.0]});
                 self.push_u32(arm! {blr x(0)});
             }
@@ -73,40 +83,40 @@ impl ArmCompiler {
 
     // d2 == true ? d0 : d1
     fn ifelse(&mut self) {
-        self.push_u32(arm! {and v(0).8b, v(0).8b, v(2).8b});
-        self.push_u32(arm! {not v(2).8b, v(2).8b});
-        self.push_u32(arm! {and v(1).8b, v(1).8b, v(2).8b});
-        self.push_u32(arm! {orr v(0).8b, v(0).8b, v(1).8b});
+        self.push_u32(arm! {and v(self.n(0)).8b, v(self.n(0)).8b, v(self.n(2)).8b});
+        self.push_u32(arm! {not v(self.n(2)).8b, v(self.n(2)).8b});
+        self.push_u32(arm! {and v(self.n(1)).8b, v(self.n(1)).8b, v(self.n(2)).8b});
+        self.push_u32(arm! {orr v(self.n(0)).8b, v(self.n(0)).8b, v(self.n(1)).8b});
     }
 
     fn load_xmm_indirect(&mut self, x: u8, r: Word) {
         if r == Frame::ZERO {
-            self.push_u32(arm! {fmov d(x), #0.0});
+            self.push_u32(arm! {fmov d(self.n(x)), #0.0});
         } else if r == Frame::ONE {
-            self.push_u32(arm! {fmov d(x), #1.0});
+            self.push_u32(arm! {fmov d(self.n(x)), #1.0});
         } else if r == Frame::MINUS_ONE {
-            self.push_u32(arm! {fmov d(x), #-1.0});
+            self.push_u32(arm! {fmov d(self.n(x)), #-1.0});
         } else if r.is_temp() {
             let k = self.stack.pop(&r);            
-            self.push_u32(arm! {ldr d(x), [sp, #8*k]});
+            self.push_u32(arm! {ldr d(self.n(x)), [sp, #8*k]});
         } else {
-            self.push_u32(arm! {ldr d(x), [x(19), #8*r.0]});
+            self.push_u32(arm! {ldr d(self.n(x)), [x(19), #8*r.0]});
         }
     }
 
     fn save_xmm_indirect(&mut self, x: u8, r: Word) {
         if r.is_temp() {
             let k = self.stack.push(&r);
-            self.push_u32(arm! {str d(x), [sp, #8*k]});
+            self.push_u32(arm! {str d(self.n(x)), [sp, #8*k]});
         } else {
-            self.push_u32(arm! {str d(x), [x(19), #8*r.0]});
+            self.push_u32(arm! {str d(self.n(x)), [x(19), #8*r.0]});
         }
     }
     
     fn load_buffered(&mut self, x: u8, r: Word) {
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_some_and(|s| s == r) {                
-                self.push_u32(arm! {fmov d(x), d(4+k)});
+                self.renamer.swap(x, (4+k) as u8);
                 self.buf[k] = None;
                 return;
             }        
@@ -118,7 +128,7 @@ impl ArmCompiler {
     fn save_buffered(&mut self, x: u8, r: Word) {        
         for (k, b) in self.buf.iter().enumerate() {
             if b.is_none() {
-                self.push_u32(arm! {fmov d(4+k), d(x)});                
+                self.renamer.swap((4+k) as u8, x);
                 self.buf[k] = Some(r);
                 return;
             }
@@ -151,7 +161,7 @@ impl ArmCompiler {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
                     if r != *x {
-                        self.load_buffered(Self::D0, *x);
+                        self.load_buffered(self.n(0), *x);
                     };
                     self.op_code(&op, *p);
                     r = *dst;
@@ -165,13 +175,14 @@ impl ArmCompiler {
                     };
 
                     if *y == r {
-                        self.push_u32(arm! {fmov d(1), d(0)});
+                        // self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
+                        self.renamer.swap(1, 0);
                     } else {
-                        self.load_buffered(Self::D1, *y);
+                        self.load_buffered(self.n(1), *y);
                     }
 
                     if *x != r {
-                        self.load_buffered(Self::D0, *x);
+                        self.load_buffered(self.n(0), *x);
                     }
 
                     self.op_code(&op, *p);
@@ -179,19 +190,21 @@ impl ArmCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
-                        self.push_u32(arm! {fmov d(2), d(0)});
+                        // self.push_u32(arm! {fmov d(self.n(2)), d(self.n(0))});
+                        self.renamer.swap(2, 0);
                     } else {
-                        self.load_buffered(Self::D2, *cond);
+                        self.load_buffered(self.n(2), *cond);
                     }
 
                     if *x2 == r {
-                        self.push_u32(arm! {fmov d(1), d(0)});
+                        // self.push_u32(arm! {fmov d(self.n(1)), d(self.n(0))});
+                        self.renamer.swap(1, 0);
                     } else {
-                        self.load_buffered(Self::D1, *x2);
+                        self.load_buffered(self.n(1), *x2);
                     }
 
                     if *x1 != r {
-                        self.load_buffered(Self::D0, *x1);
+                        self.load_buffered(self.n(0), *x1);
                     }
 
                     self.ifelse();
