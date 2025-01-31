@@ -72,7 +72,7 @@ impl ArmCompiler {
             _ => {
                 // self.dump_buffer();
                  if self.n(0) != 0 {
-                    self.push_vec(arm! {mov d(0), d(self.n(0))});
+                    self.push_u32(arm! {fmov d(0), d(self.n(0))});
                 }
                 self.renamer.reset();               
                 self.push_u32(arm! {ldr x(0), [x(20), #8*p.0]});
