@@ -177,6 +177,7 @@ impl Compiler<MachineCode> for AmdCompiler {
         self.epilogue(n);
 
         MachineCode::new(
+            "x86_64",
             &self.machine_code.clone(),
             prog.virtual_table(),
             prog.frame.mem(),

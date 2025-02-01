@@ -184,6 +184,7 @@ impl Compiler<MachineCode> for ArmCompiler {
         self.epilogue(n);
 
         MachineCode::new(
+            "aarch64",
             &self.machine_code.clone(),
             prog.virtual_table(),
             prog.frame.mem(),

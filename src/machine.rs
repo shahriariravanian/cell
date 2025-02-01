@@ -7,6 +7,7 @@ use super::code::BinaryFunc;
 use super::utils::*;
 
 pub struct MachineCode {
+    runnable: bool,
     p: *const u8,
     mmap: Mmap, // we need to store mmap and fs here, so that they are not dropped
     name: String,
@@ -16,14 +17,31 @@ pub struct MachineCode {
 }
 
 impl MachineCode {
-    pub fn new(machine_code: &Vec<u8>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> MachineCode {
+    pub fn new(arch: &str, machine_code: &Vec<u8>, vt: Vec<BinaryFunc>, _mem: Vec<f64>) -> MachineCode {
         let name = Alphanumeric.sample_string(&mut rand::thread_rng(), 16) + ".bin";
         MachineCode::write_buf(machine_code, &name);
         let fs = fs::File::open(&name).unwrap();
         let mmap = unsafe { MmapOptions::new().map_exec(&fs).unwrap() };
         let p = mmap.as_ptr() as *const u8;
+        
+        let mut runnable = false;
+
+        #[cfg(target_arch = "x86_64")]
+        if arch == "x86_64" { 
+            runnable = true; 
+        } else { 
+            panic!("cannot run {:?} code", arch); 
+        }
+        
+        #[cfg(target_arch = "aarch64")]
+        if arch == "aarch64" { 
+            runnable = true; 
+        } else {
+            panic!("cannot run {:?} code", arch); 
+        }
 
         MachineCode {
+            runnable,
             p,
             mmap,
             name,
@@ -41,8 +59,10 @@ impl MachineCode {
 
 impl Compiled for MachineCode {
     fn run(&mut self) {
-        let f: fn(&[f64], &[BinaryFunc]) = unsafe { std::mem::transmute(self.p) };
-        f(&mut self._mem, &self.vt);
+        if self.runnable {
+            let f: fn(&[f64], &[BinaryFunc]) = unsafe { std::mem::transmute(self.p) };
+            f(&mut self._mem, &self.vt);
+        }
     }
 
     #[inline]
