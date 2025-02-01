@@ -35,37 +35,42 @@ impl Compiler<ByteCode> for Interpreter {
     fn compile(&mut self, prog: &Program) -> ByteCode {
         let vt = prog.virtual_table();
         let mut code: Vec<Fast> = Vec::new();
-
+        let mut mem = prog.frame.mem();
+        let m = mem.len();
+        for i in 0..256 {
+            mem.push(0.0);
+        }
+        
         for c in prog.code.iter() {
             match c {
                 Instruction::Unary { p, x, dst, .. } => {
                     code.push(Fast::Unary {
                         f: vt[p.0],
-                        x: x.0 as u32,
-                        dst: dst.0 as u32,
+                        x: (if x.is_temp() {m+x.0} else {x.0}) as u32,
+                        dst: (if dst.is_temp() {m+dst.0} else {dst.0}) as u32,
                     });
                 }
                 Instruction::Binary { p, x, y, dst, .. } => {
                     code.push(Fast::Binary {
                         f: vt[p.0],
-                        x: x.0 as u32,
-                        y: y.0 as u32,
-                        dst: dst.0 as u32,
+                        x: (if x.is_temp() {m+x.0} else {x.0}) as u32,
+                        y: (if y.is_temp() {m+y.0} else {y.0}) as u32,
+                        dst: (if dst.is_temp() {m+dst.0} else {dst.0}) as u32,
                     });
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     code.push(Fast::IfElse {
-                        x1: x1.0 as u32,
-                        x2: x2.0 as u32,
-                        cond: cond.0 as u32,
-                        dst: dst.0 as u32,
+                        x1: (if x1.is_temp() {m+x1.0} else {x1.0}) as u32,
+                        x2: (if x2.is_temp() {m+x2.0} else {x2.0}) as u32,
+                        cond: (if cond.is_temp() {m+cond.0} else {cond.0}) as u32,
+                        dst: (if dst.is_temp() {m+dst.0} else {dst.0}) as u32,
                     });
                 }
                 _ => {}
             }
         }
 
-        ByteCode::new(code, prog.frame.mem())
+        ByteCode::new(code, mem)
     }
 }
 

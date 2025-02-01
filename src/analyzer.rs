@@ -146,7 +146,7 @@ impl Renamer {
         let j = j as usize;
         let t = self.mapping[i];
         self.mapping[i] = self.mapping[j];
-        self.mapping[j] = t;
+        //self.mapping[j] = t;
     }
 }
 

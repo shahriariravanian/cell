@@ -25,7 +25,7 @@ use solvers::*;
 fn solve(r: &mut Runnable) {
     let u0 = r.initial_states();
     let p = r.params();
-    let alg = Euler::new(0.02, 50);
+    let alg = Euler::new(0.001, 100);
     //let sol = alg.solve(r, u0.clone(), p.clone(), 0.0..1000.0);
 
     let now = Instant::now();
