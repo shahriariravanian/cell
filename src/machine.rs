@@ -7,7 +7,6 @@ use super::code::BinaryFunc;
 use super::utils::*;
 
 pub struct MachineCode {
-    runnable: bool,
     p: *const u8,
     mmap: Mmap, // we need to store mmap and fs here, so that they are not dropped
     name: String,
@@ -23,25 +22,18 @@ impl MachineCode {
         let fs = fs::File::open(&name).unwrap();
         let mmap = unsafe { MmapOptions::new().map_exec(&fs).unwrap() };
         let p = mmap.as_ptr() as *const u8;
-        
-        let mut runnable = false;
 
         #[cfg(target_arch = "x86_64")]
-        if arch == "x86_64" { 
-            runnable = true; 
-        } else { 
+        if arch != "x86_64" { 
             panic!("cannot run {:?} code", arch); 
         }
         
         #[cfg(target_arch = "aarch64")]
-        if arch == "aarch64" { 
-            runnable = true; 
-        } else {
+        if arch != "aarch64" { 
             panic!("cannot run {:?} code", arch); 
         }
 
-        MachineCode {
-            runnable,
+        MachineCode {            
             p,
             mmap,
             name,
@@ -58,11 +50,9 @@ impl MachineCode {
 }
 
 impl Compiled for MachineCode {
-    fn run(&mut self) {
-        if self.runnable {
-            let f: fn(&[f64], &[BinaryFunc]) = unsafe { std::mem::transmute(self.p) };
-            f(&mut self._mem, &self.vt);
-        }
+    fn run(&mut self) {        
+        let f: fn(&[f64], &[BinaryFunc]) = unsafe { std::mem::transmute(self.p) };
+        f(&mut self._mem, &self.vt);        
     }
 
     #[inline]

@@ -26,15 +26,15 @@ impl Analyzer {
                     events.push(Event::Producer(*dst));                    
                 }
                 Instruction::Binary { op, x, y, dst, .. } => {
-                    events.push(Event::Consumer(*x));
                     events.push(Event::Consumer(*y));
+                    events.push(Event::Consumer(*x));                    
                     events.push(Event::Caller(op.clone()));
                     events.push(Event::Producer(*dst));
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
-                    events.push(Event::Consumer(*x1));
-                    events.push(Event::Consumer(*x2));
                     events.push(Event::Consumer(*cond));
+                    events.push(Event::Consumer(*x2));
+                    events.push(Event::Consumer(*x1));                    
                     events.push(Event::Caller("select".to_string()));
                     events.push(Event::Producer(*dst));
                 }
@@ -115,6 +115,48 @@ impl Analyzer {
         }
 
         bufferable
+    }
+    
+    pub fn alloc_regs(&self) -> HashMap<Word, u8> {
+        let caller = [
+            "rem", "power", "sin", "cos", "tan", "csc", "sec", "cot", "arcsin", "arccos", "arctan",
+            "exp", "ln", "log", "root",
+        ];
+        
+        let mut allocs: HashMap<Word, u8> = HashMap::new();
+        let mut lives: Vec<Word> = Vec::new();
+        let mut depth: usize = 0;
+
+        for l in self.events.iter() {
+            match l {
+                Event::Producer(p) => {
+                    if p.is_temp() {
+                        lives.push(*p);
+                        depth = depth.max(lives.len());
+                    }
+                }
+                Event::Consumer(c) => {                
+                    if c.is_temp() {
+                        if let Some(r) = lives.pop() {                        
+                            if r != *c {
+                                panic!("temps out of stack order");                            
+                            }
+                            
+                            //allocs.insert(*c, (depth - lives.len() - 1) as u8);
+                            allocs.insert(*c, lives.len() as u8);                            
+                        }
+                    } 
+                }
+                Event::Caller(op) => {
+                    if caller.contains(&op.as_str()) {                        
+                        lives.clear();                        
+                        depth = 0;
+                    }
+                }
+            }
+        }
+
+        allocs
     }
 }
 

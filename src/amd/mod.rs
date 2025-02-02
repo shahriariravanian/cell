@@ -1,7 +1,7 @@
 #[macro_use]
 mod macros;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use super::analyzer::{Analyzer, Stack};
 use super::code::*;
@@ -14,13 +14,15 @@ use super::utils::*;
 pub struct AmdCompiler {
     machine_code: Vec<u8>,
     stack: Stack,
+    allocs: HashMap<Word, u8>,
 }
 
 impl AmdCompiler {
     pub fn new() -> AmdCompiler {
         Self {
             machine_code: Vec::new(),
-            stack: Stack::new(),            
+            stack: Stack::new(),
+            allocs: HashMap::new(),
         }
     }
 
@@ -64,6 +66,13 @@ impl AmdCompiler {
     }
 
     fn load(&mut self, x: u8, r: Word) {
+        if let Some(s) = self.allocs.get(&r) {
+            if *s < 4 {
+                self.emit(amd! {movapd xmm(x), xmm(4+*s)});
+                return;
+            }
+        }
+    
         if r == Frame::ZERO {
             self.emit(amd! {xorpd xmm(x), xmm(x)});
         } else if r.is_temp() {
@@ -75,6 +84,13 @@ impl AmdCompiler {
     }
 
     fn save(&mut self, x: u8, r: Word) {
+        if let Some(s) = self.allocs.get(&r) {
+            if *s < 4 {
+                self.emit(amd! {movapd xmm(4+*s), xmm(x)});
+                return;
+            }
+        }
+    
         if r.is_temp() {
             let k = self.stack.push(&r);
             self.emit(amd! {movsd qword ptr [rsp+8*k], xmm(x)});
@@ -168,6 +184,8 @@ impl Compiler<MachineCode> for AmdCompiler {
     fn compile(&mut self, prog: &Program) -> MachineCode {                
         let analyzer = Analyzer::new(prog);
         let saveable = analyzer.find_saveable();
+        
+        self.allocs = analyzer.alloc_regs();
         
         self.codegen(prog, &saveable);             
         self.machine_code.clear();        
