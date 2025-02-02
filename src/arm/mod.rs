@@ -33,25 +33,25 @@ impl ArmCompiler {
         self.machine_code.push((w >> 24) as u8);
     }    
 
-    fn op_code(&mut self, op: &str, p: Proc) {
+    fn op_code(&mut self, op: &str, p: Proc, rx: u8, ry: u8) {
         match op {
             "mov" => {}
-            "plus" => self.emit(arm! {fadd d(0), d(0), d(1)}),
-            "minus" => self.emit(arm! {fsub d(0), d(0), d(1)}),
-            "times" => self.emit(arm! {fmul d(0), d(0), d(1)}),
-            "divide" => self.emit(arm! {fdiv d(0), d(0), d(1)}),
-            "gt" => self.emit(arm! {fcmgt d(0), d(0), d(1)}),
-            "geq" => self.emit(arm! {fcmge d(0), d(0), d(1)}),
-            "lt" => self.emit(arm! {fcmlt d(0), d(0), d(1)}),
-            "leq" => self.emit(arm! {fcmle d(0), d(0), d(1)}),
-            "eq" => self.emit(arm! {fcmeq d(0), d(0), d(1)}),
-            "and" => self.emit(arm! {and v(0).8b, v(0).8b, v(1).8b}),
-            "or" => self.emit(arm! {orr v(0).8b, v(0).8b, v(1).8b}),
-            "xor" => self.emit(arm! {eor v(0).8b, v(0).8b, v(1).8b}),
-            "neg" => self.emit(arm! {fneg d(0), d(0)}),
-            "root" => self.emit(arm! {fsqrt d(0), d(0)}),
+            "plus" => self.emit(arm! {fadd d(0), d(rx), d(ry)}),
+            "minus" => self.emit(arm! {fsub d(0), d(rx), d(ry)}),
+            "times" => self.emit(arm! {fmul d(0), d(rx), d(ry)}),
+            "divide" => self.emit(arm! {fdiv d(0), d(rx), d(ry)}),
+            "gt" => self.emit(arm! {fcmgt d(0), d(rx), d(ry)}),
+            "geq" => self.emit(arm! {fcmge d(0), d(rx), d(ry)}),
+            "lt" => self.emit(arm! {fcmlt d(0), d(rx), d(ry)}),
+            "leq" => self.emit(arm! {fcmle d(0), d(rx), d(ry)}),
+            "eq" => self.emit(arm! {fcmeq d(0), d(rx), d(ry)}),
+            "and" => self.emit(arm! {and v(0).8b, v(rx).8b, v(ry).8b}),
+            "or" => self.emit(arm! {orr v(0).8b, v(rx).8b, v(ry).8b}),
+            "xor" => self.emit(arm! {eor v(0).8b, v(rx).8b, v(ry).8b}),
+            "neg" => self.emit(arm! {fneg d(0), d(rx)}),
+            "root" => self.emit(arm! {fsqrt d(0), d(rx)}),
             "neq" => {
-                self.emit(arm! {fcmeq d(0), d(0), d(1)});
+                self.emit(arm! {fcmeq d(0), d(rx), d(ry)});
                 self.emit(arm! {not v(0).8b, v(0).8b});
             }
             _ => {
@@ -62,9 +62,11 @@ impl ArmCompiler {
     }
 
     // d2 == true ? d0 : d1
-    fn ifelse(&mut self) {
-        self.emit(arm! {bsl v(2).8b, v(0).8b, v(1).8b});
-        self.emit(arm! {fmov d(0), d(2)});        
+    fn ifelse(&mut self, rc: u8, r1: u8, r2: u8) {
+        self.emit(arm! {bsl v(rc).8b, v(r1).8b, v(r2).8b});
+        if rc != 0 {
+            self.emit(arm! {fmov d(0), d(rc)});        
+        }
     }
 
     fn load(&mut self, x: u8, r: Word, rename: bool) -> u8 {
@@ -136,51 +138,21 @@ impl ArmCompiler {
         for c in prog.code.iter() {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
-                    if r != *x {
-                        self.load(0, *x, false);
-                    };
-                    self.op_code(&op, *p);
+                    let rx = if *x == r {0} else { self.load(1, *x, true) };
+                    self.op_code(&op, *p, rx, 0);
                     r = *dst;
                 }
                 Instruction::Binary { p, x, y, dst, op } => {
-                    // commutative operators
-                    let (x, y) = if (op == "plus" || op == "times") && *y == r {
-                        (y, x)
-                    } else {
-                        (x, y)
-                    };
-
-                    if *y == r {
-                        self.emit(arm! {fmov d(1), d(0)});                        
-                    } else {
-                        self.load(1, *y, false);
-                    }
-
-                    if *x != r {
-                        self.load(0, *x, false);
-                    }
-
-                    self.op_code(&op, *p);
+                    let rx = if *x == r {0} else { self.load(1, *x, true) };
+                    let ry = if *y == r {0} else { self.load(2, *y, true) };
+                    self.op_code(&op, *p, rx, ry);
                     r = *dst;
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
-                    if *cond == r {
-                        self.emit(arm! {fmov d(2), d(0)});                        
-                    } else {
-                        self.load(2, *cond, false);
-                    }
-
-                    if *x2 == r {
-                        self.emit(arm! {fmov d(1), d(0)});                        
-                    } else {
-                        self.load(1, *x2, false);
-                    }
-
-                    if *x1 != r {
-                        self.load(0, *x1, false);
-                    }
-
-                    self.ifelse();
+                    let rc = if *cond == r {0} else { self.load(0, *cond, true) };
+                    let r1 = if *x1 == r {0} else { self.load(1, *x1, true) };
+                    let r2 = if *x2 == r {0} else { self.load(2, *x2, true) };
+                    self.ifelse(rc, r1, r2);
                     r = *dst;
                 }
                 _ => {
