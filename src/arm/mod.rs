@@ -205,7 +205,7 @@ impl Compiler<MachineCode> for ArmCompiler {
         
         self.codegen(prog, &saveable);             
         self.machine_code.clear();        
-        let n = 8 * ((self.stack.capacity() + 1) & 0xfff7);
+        let n = 8 * ((self.stack.capacity() + 1) & 0xfffe);
         self.prologue(n);
         self.codegen(prog, &saveable);
         self.epilogue(n);
