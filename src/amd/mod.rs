@@ -30,22 +30,22 @@ impl AmdCompiler {
         self.machine_code.extend_from_slice(&v[..]);
     }    
 
-    fn op_code(&mut self, op: &str, p: Proc) {                
+    fn op_code(&mut self, op: &str, p: Proc, ry: u8) {                
         match op {
             "mov" => {}
-            "plus" => self.emit(amd! {addsd xmm(0), xmm(1)}),
-            "minus" => self.emit(amd! {subsd xmm(0), xmm(1)}),
-            "times" => self.emit(amd! {mulsd xmm(0), xmm(1)}),
-            "divide" => self.emit(amd! {divsd xmm(0), xmm(1)}),
-            "gt" => self.emit(amd! {cmpnlesd xmm(0), xmm(1)}),
-            "geq" => self.emit(amd! {cmpnltsd xmm(0), xmm(1)}),
-            "lt" => self.emit(amd! {cmpltsd xmm(0), xmm(1)}),
-            "leq" => self.emit(amd! {cmplesd xmm(0), xmm(1)}),
-            "eq" => self.emit(amd! {cmpeqsd xmm(0), xmm(1)}),
-            "neq" => self.emit(amd! {cmpneqsd xmm(0), xmm(1)}),
-            "and" => self.emit(amd! {andpd xmm(0), xmm(1)}),
-            "or" => self.emit(amd! {orpd xmm(0), xmm(1)}),
-            "xor" => self.emit(amd! {xorpd xmm(0), xmm(1)}),
+            "plus" => self.emit(amd! {addsd xmm(0), xmm(ry)}),
+            "minus" => self.emit(amd! {subsd xmm(0), xmm(ry)}),
+            "times" => self.emit(amd! {mulsd xmm(0), xmm(ry)}),
+            "divide" => self.emit(amd! {divsd xmm(0), xmm(ry)}),
+            "gt" => self.emit(amd! {cmpnlesd xmm(0), xmm(ry)}),
+            "geq" => self.emit(amd! {cmpnltsd xmm(0), xmm(ry)}),
+            "lt" => self.emit(amd! {cmpltsd xmm(0), xmm(ry)}),
+            "leq" => self.emit(amd! {cmplesd xmm(0), xmm(ry)}),
+            "eq" => self.emit(amd! {cmpeqsd xmm(0), xmm(ry)}),
+            "neq" => self.emit(amd! {cmpneqsd xmm(0), xmm(ry)}),
+            "and" => self.emit(amd! {andpd xmm(0), xmm(ry)}),
+            "or" => self.emit(amd! {orpd xmm(0), xmm(ry)}),
+            "xor" => self.emit(amd! {xorpd xmm(0), xmm(ry)}),
             "neg" => {
                 self.emit(amd! {movsd xmm(1), qword ptr [rbp+8*Frame::MINUS_ZERO.0]});
                 self.emit(amd! {xorpd xmm(0), xmm(1)});
@@ -65,11 +65,17 @@ impl AmdCompiler {
         self.emit(amd! {orpd xmm(0), xmm(3)});
     }
 
-    fn load(&mut self, x: u8, r: Word) {
+    fn load(&mut self, x: u8, r: Word, rename: bool) -> u8 {
         if let Some(s) = self.allocs.get(&r) {
-            if *s < 4 {
-                self.emit(amd! {movapd xmm(x), xmm(4+*s)});
-                return;
+            let s = *s;
+            
+            if s < 4 {
+                if rename {
+                    return s + 4;
+                } else {
+                    self.emit(amd! {movapd xmm(x), xmm(s+4)});
+                    return x;
+                }
             }
         }
     
@@ -80,13 +86,17 @@ impl AmdCompiler {
             self.emit(amd! {movsd xmm(x), qword ptr [rsp+8*k]});            
         } else {
             self.emit(amd! {movsd xmm(x), qword ptr [rbp+8*r.0]});
-        }
+        };
+        
+        x
     }
 
     fn save(&mut self, x: u8, r: Word) {
         if let Some(s) = self.allocs.get(&r) {
-            if *s < 4 {
-                self.emit(amd! {movapd xmm(4+*s), xmm(x)});
+            let s = *s;
+            
+            if s < 4 {
+                self.emit(amd! {movapd xmm(s+4), xmm(x)});
                 return;
             }
         }
@@ -121,9 +131,9 @@ impl AmdCompiler {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
                     if r != *x {
-                        self.load(0, *x);
+                        self.load(0, *x, false);
                     };
-                    self.op_code(&op, *p);
+                    self.op_code(&op, *p, 0);
                     r = *dst;
                 }
                 Instruction::Binary { p, x, y, dst, op } => {
@@ -134,34 +144,35 @@ impl AmdCompiler {
                         (x, y)
                     };
 
-                    if *y == r {
+                    let ry = if *y == r {                        
                         self.emit(amd! {movapd xmm(1), xmm(0)});
+                        1
                     } else {
-                        self.load(1, *y);
-                    }
+                        self.load(1, *y, true)
+                    };
 
                     if *x != r {
-                        self.load(0, *x);
+                        self.load(0, *x, false);
                     }
 
-                    self.op_code(&op, *p);
+                    self.op_code(&op, *p, ry);
                     r = *dst;
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     if *cond == r {
                         self.emit(amd! {movapd xmm(2), xmm(0)});
                     } else {
-                        self.load(2, *cond);
+                        self.load(2, *cond, false);
                     }
 
                     if *x2 == r {
                         self.emit(amd! {movapd xmm(1), xmm(0)});
                     } else {
-                        self.load(1, *x2);
+                        self.load(1, *x2, false);
                     }
 
                     if *x1 != r {
-                        self.load(0, *x1);
+                        self.load(0, *x1, false);
                     }
 
                     self.ifelse();

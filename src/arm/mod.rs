@@ -1,7 +1,7 @@
 #[macro_use]
 mod macros;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use super::analyzer::{Analyzer, Stack};
 use super::code::*;
@@ -14,6 +14,7 @@ use super::utils::*;
 pub struct ArmCompiler {
     machine_code: Vec<u8>,
     stack: Stack,
+    allocs: HashMap<Word, u8>,
 }
 
 impl ArmCompiler {
@@ -21,6 +22,7 @@ impl ArmCompiler {
         Self {
             machine_code: Vec::new(),
             stack: Stack::new(),
+            allocs: HashMap::new(),
         }
     }
 
@@ -65,7 +67,20 @@ impl ArmCompiler {
         self.emit(arm! {fmov d(0), d(2)});        
     }
 
-    fn load(&mut self, x: u8, r: Word) {
+    fn load(&mut self, x: u8, r: Word, rename: bool) -> u8 {
+        if let Some(s) = self.allocs.get(&r) {
+            let s = *s;
+            
+            if s < 4 {
+                if rename {
+                    return s + 4;
+                } else {
+                    self.emit(arm! {fmov d(x), d(s+4)});
+                    return x;
+                }
+            }
+        }
+        
         if r == Frame::ZERO {
             self.emit(arm! {fmov d(x), #0.0});
         } else if r == Frame::ONE {
@@ -77,10 +92,21 @@ impl ArmCompiler {
             self.emit(arm! {ldr d(x), [sp, #8*k]});
         } else {
             self.emit(arm! {ldr d(x), [x(19), #8*r.0]});
-        }
+        };
+        
+        x
     }
 
     fn save(&mut self, x: u8, r: Word) {
+        if let Some(s) = self.allocs.get(&r) {
+            let s = *s;
+            
+            if s < 4 {
+                self.emit(arm! {fmov d(s+4), d(x)});
+                return;
+            }
+        }
+    
         if r.is_temp() {
             let k = self.stack.push(&r);
             self.emit(arm! {str d(x), [sp, #8*k]});
@@ -111,7 +137,7 @@ impl ArmCompiler {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
                     if r != *x {
-                        self.load(0, *x);
+                        self.load(0, *x, false);
                     };
                     self.op_code(&op, *p);
                     r = *dst;
@@ -127,11 +153,11 @@ impl ArmCompiler {
                     if *y == r {
                         self.emit(arm! {fmov d(1), d(0)});                        
                     } else {
-                        self.load(1, *y);
+                        self.load(1, *y, false);
                     }
 
                     if *x != r {
-                        self.load(0, *x);
+                        self.load(0, *x, false);
                     }
 
                     self.op_code(&op, *p);
@@ -141,17 +167,17 @@ impl ArmCompiler {
                     if *cond == r {
                         self.emit(arm! {fmov d(2), d(0)});                        
                     } else {
-                        self.load(2, *cond);
+                        self.load(2, *cond, false);
                     }
 
                     if *x2 == r {
                         self.emit(arm! {fmov d(1), d(0)});                        
                     } else {
-                        self.load(1, *x2);
+                        self.load(1, *x2, false);
                     }
 
                     if *x1 != r {
-                        self.load(0, *x1);
+                        self.load(0, *x1, false);
                     }
 
                     self.ifelse();
@@ -174,7 +200,8 @@ impl Compiler<MachineCode> for ArmCompiler {
     fn compile(&mut self, prog: &Program) -> MachineCode {
         let analyzer = Analyzer::new(prog);
         let saveable = analyzer.find_saveable();
-        // let bufferable = analyzer.find_bufferable();
+        
+        self.allocs = analyzer.alloc_regs();
         
         self.codegen(prog, &saveable);             
         self.machine_code.clear();        
