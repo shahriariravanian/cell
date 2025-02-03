@@ -138,20 +138,20 @@ impl ArmCompiler {
         for c in prog.code.iter() {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
-                    let rx = if *x == r {0} else { self.load(1, *x, true) };
+                    let rx = if *x == r {0} else { self.load(1, *x, false) };                    
                     self.op_code(&op, *p, rx, 0);
                     r = *dst;
                 }
                 Instruction::Binary { p, x, y, dst, op } => {
-                    let rx = if *x == r {0} else { self.load(1, *x, true) };
-                    let ry = if *y == r {0} else { self.load(2, *y, true) };
+                    let rx = if *x == r {0} else { self.load(1, *x, false) };
+                    let ry = if *y == r {0} else { self.load(2, *y, false) };
                     self.op_code(&op, *p, rx, ry);
                     r = *dst;
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
-                    let rc = if *cond == r {0} else { self.load(0, *cond, true) };
-                    let r1 = if *x1 == r {0} else { self.load(1, *x1, true) };
-                    let r2 = if *x2 == r {0} else { self.load(2, *x2, true) };
+                    let rc = if *cond == r {0} else { self.load(3, *cond, false) };
+                    let r1 = if *x1 == r {0} else { self.load(1, *x1, false) };
+                    let r2 = if *x2 == r {0} else { self.load(2, *x2, false) };                    
                     self.ifelse(rc, r1, r2);
                     r = *dst;
                 }
