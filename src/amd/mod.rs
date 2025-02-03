@@ -50,7 +50,14 @@ impl AmdCompiler {
                 self.emit(amd! {movsd xmm(1), qword ptr [rbp+8*Frame::MINUS_ZERO.0]});
                 self.emit(amd! {xorpd xmm(0), xmm(1)});
             }
-            _ => {
+            "power" | "rem" => {
+                if ry != 1 {
+                    self.emit(amd! {movsd xmm(1), xmm(ry)});
+                }
+                self.emit(amd! {mov rax, qword ptr [rbx+8*p.0]});
+                self.emit(amd! {call rax});
+            }
+            _ => {                
                 self.emit(amd! {mov rax, qword ptr [rbx+8*p.0]});
                 self.emit(amd! {call rax});
             }

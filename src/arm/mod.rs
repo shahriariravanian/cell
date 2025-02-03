@@ -54,7 +54,20 @@ impl ArmCompiler {
                 self.emit(arm! {fcmeq d(0), d(rx), d(ry)});
                 self.emit(arm! {not v(0).8b, v(0).8b});
             }
+            "power" | "rem" => {
+                if rx != 0 {
+                    self.emit(arm! {fmov d(0), d(rx)});
+                }
+                if ry != 1 {
+                    self.emit(arm! {fmov d(1), d(ry)});
+                }
+                self.emit(arm! {ldr x(0), [x(20), #8*p.0]});
+                self.emit(arm! {blr x(0)});
+            }
             _ => {
+                if rx != 0 {
+                    self.emit(arm! {fmov d(0), d(rx)});
+                }
                 self.emit(arm! {ldr x(0), [x(20), #8*p.0]});
                 self.emit(arm! {blr x(0)});
             }
@@ -146,17 +159,19 @@ impl ArmCompiler {
                 }
                 Instruction::Binary { p, x, y, dst, op } => {
                     let rx = if *x == r {
-                        self.emit(arm! {fmov d(1), d(0)});
-                        1
+                        //self.emit(arm! {fmov d(1), d(0)});
+                        //1
+                        0
                     } else {
-                        self.load(1, *x, false)
+                        self.load(1, *x, true)
                     };
 
                     let ry = if *y == r {
-                        self.emit(arm! {fmov d(2), d(0)});
-                        2
+                        //self.emit(arm! {fmov d(2), d(0)});
+                        //2
+                        0
                     } else {
-                        self.load(2, *y, false)
+                        self.load(2, *y, true)
                     };
 
                     self.op_code(&op, *p, rx, ry);
@@ -164,24 +179,27 @@ impl ArmCompiler {
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     let rc = if *cond == r {
-                        self.emit(arm! {fmov d(3), d(0)});
-                        3
+                        //self.emit(arm! {fmov d(3), d(0)});
+                        //3
+                        0
                     } else {
-                        self.load(3, *cond, false)
+                        self.load(3, *cond, true)
                     };
 
                     let r1 = if *x1 == r {
-                        self.emit(arm! {fmov d(1), d(0)});
-                        1
+                        //self.emit(arm! {fmov d(1), d(0)});
+                        //1
+                        0
                     } else {
-                        self.load(1, *x1, false)
+                        self.load(1, *x1, true)
                     };
 
                     let r2 = if *x2 == r {
-                        self.emit(arm! {fmov d(2), d(0)});
-                        2
+                        //self.emit(arm! {fmov d(2), d(0)});
+                        //2
+                        0
                     } else {
-                        self.load(2, *x2, false)
+                        self.load(2, *x2, true)
                     };
 
                     self.ifelse(rc, r1, r2);
