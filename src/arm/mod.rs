@@ -111,6 +111,14 @@ impl ArmCompiler {
 
         x
     }
+    
+    fn fuse_load(&mut self, r0: Word, x: u8, r: Word, rename: bool) -> u8 {
+        if x == r0 {
+            0
+        } else {
+            self.load(x, r, rename)
+        }        
+    }
 
     fn save(&mut self, x: u8, r: Word) {
         if let Some(s) = self.allocs.get(&r) {
@@ -158,50 +166,15 @@ impl ArmCompiler {
                     r = *dst;
                 }
                 Instruction::Binary { p, x, y, dst, op } => {
-                    let rx = if *x == r {
-                        //self.emit(arm! {fmov d(1), d(0)});
-                        //1
-                        0
-                    } else {
-                        self.load(1, *x, true)
-                    };
-
-                    let ry = if *y == r {
-                        //self.emit(arm! {fmov d(2), d(0)});
-                        //2
-                        0
-                    } else {
-                        self.load(2, *y, true)
-                    };
-
+                    let rx = self.fuse_load(r, 1, *x, true);
+                    let ry = self.fuse_load(r, 2, *y, true);
                     self.op_code(&op, *p, rx, ry);
                     r = *dst;
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
-                    let rc = if *cond == r {
-                        //self.emit(arm! {fmov d(3), d(0)});
-                        //3
-                        0
-                    } else {
-                        self.load(3, *cond, true)
-                    };
-
-                    let r1 = if *x1 == r {
-                        //self.emit(arm! {fmov d(1), d(0)});
-                        //1
-                        0
-                    } else {
-                        self.load(1, *x1, true)
-                    };
-
-                    let r2 = if *x2 == r {
-                        //self.emit(arm! {fmov d(2), d(0)});
-                        //2
-                        0
-                    } else {
-                        self.load(2, *x2, true)
-                    };
-
+                    let r1 = self.fuse_load(r, 1, *x1, true);
+                    let r2 = self.fuse_load(r, 2, *x2, true);
+                    let rc = self.fuse_load(r, 3, *cond, true);
                     self.ifelse(rc, r1, r2);
                     r = *dst;
                 }
