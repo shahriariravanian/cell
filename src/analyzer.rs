@@ -1,4 +1,4 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 use super::code::Instruction;
 use super::model::Program;
@@ -23,18 +23,18 @@ impl Analyzer {
                 Instruction::Unary { op, x, dst, .. } => {
                     events.push(Event::Consumer(*x));
                     events.push(Event::Caller(op.clone()));
-                    events.push(Event::Producer(*dst));                    
+                    events.push(Event::Producer(*dst));
                 }
                 Instruction::Binary { op, x, y, dst, .. } => {
                     events.push(Event::Consumer(*y));
-                    events.push(Event::Consumer(*x));                    
+                    events.push(Event::Consumer(*x));
                     events.push(Event::Caller(op.clone()));
                     events.push(Event::Producer(*dst));
                 }
                 Instruction::IfElse { x1, x2, cond, dst } => {
                     events.push(Event::Consumer(*cond));
                     events.push(Event::Consumer(*x2));
-                    events.push(Event::Consumer(*x1));                    
+                    events.push(Event::Consumer(*x1));
                     events.push(Event::Caller("select".to_string()));
                     events.push(Event::Producer(*dst));
                 }
@@ -116,13 +116,13 @@ impl Analyzer {
 
         bufferable
     }
-    
+
     pub fn alloc_regs(&self) -> HashMap<Word, u8> {
         let caller = [
             "rem", "power", "sin", "cos", "tan", "csc", "sec", "cot", "arcsin", "arccos", "arctan",
             "exp", "ln", "log", "root",
         ];
-        
+
         let mut allocs: HashMap<Word, u8> = HashMap::new();
         let mut lives: Vec<Word> = Vec::new();
         let mut depth: usize = 0;
@@ -135,21 +135,21 @@ impl Analyzer {
                         depth = depth.max(lives.len());
                     }
                 }
-                Event::Consumer(c) => {                
+                Event::Consumer(c) => {
                     if c.is_temp() {
-                        if let Some(r) = lives.pop() {                        
+                        if let Some(r) = lives.pop() {
                             if r != *c {
-                                panic!("temps out of stack order");                            
+                                panic!("temps out of stack order");
                             }
-                            
+
                             //allocs.insert(*c, (depth - lives.len() - 1) as u8);
-                            allocs.insert(*c, lives.len() as u8);                            
+                            allocs.insert(*c, lives.len() as u8);
                         }
-                    } 
+                    }
                 }
                 Event::Caller(op) => {
-                    if caller.contains(&op.as_str()) {                        
-                        lives.clear();                        
+                    if caller.contains(&op.as_str()) {
+                        lives.clear();
                         depth = 0;
                     }
                 }
@@ -164,7 +164,7 @@ impl Analyzer {
 
 #[derive(Debug)]
 pub struct Renamer {
-    mapping: Vec<u8>
+    mapping: Vec<u8>,
 }
 
 impl Renamer {
@@ -172,17 +172,17 @@ impl Renamer {
         let mapping: Vec<u8> = (0..n).collect();
         Renamer { mapping }
     }
-    
+
     pub fn reset(&mut self) {
         for i in 0..self.mapping.len() {
             self.mapping[i] = i as u8;
         }
     }
-    
+
     pub fn get(&self, i: u8) -> u8 {
         self.mapping[i as usize]
     }
-    
+
     pub fn swap(&mut self, i: u8, j: u8) {
         let i = i as usize;
         let j = j as usize;
@@ -195,31 +195,30 @@ impl Renamer {
 #[derive(Debug)]
 pub struct Stack {
     stack: Vec<Word>,
-    cap: usize
+    cap: usize,
 }
 
 impl Stack {
     pub fn new() -> Stack {
-        Stack{
+        Stack {
             stack: Vec::new(),
-            cap: 0
+            cap: 0,
         }
     }
-    
+
     pub fn push(&mut self, w: &Word) -> usize {
         self.stack.push(*w);
         self.cap = usize::max(self.cap, self.stack.len());
         self.stack.len() - 1
     }
-    
+
     pub fn pop(&mut self, w: &Word) -> usize {
         let p = self.stack.pop().expect("stack is empty");
         assert!(*w == p);
-        self.stack.len() 
+        self.stack.len()
     }
-    
+
     pub fn capacity(&self) -> usize {
         self.cap
     }
 }
-

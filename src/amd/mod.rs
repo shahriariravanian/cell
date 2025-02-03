@@ -1,7 +1,7 @@
 #[macro_use]
 mod macros;
 
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 use super::analyzer::{Analyzer, Stack};
 use super::code::*;
@@ -28,9 +28,9 @@ impl AmdCompiler {
 
     pub fn emit(&mut self, v: Vec<u8>) {
         self.machine_code.extend_from_slice(&v[..]);
-    }    
+    }
 
-    fn op_code(&mut self, op: &str, p: Proc, ry: u8) {                
+    fn op_code(&mut self, op: &str, p: Proc, ry: u8) {
         match op {
             "mov" => {}
             "plus" => self.emit(amd! {addsd xmm(0), xmm(ry)}),
@@ -50,7 +50,7 @@ impl AmdCompiler {
                 self.emit(amd! {movsd xmm(1), qword ptr [rbp+8*Frame::MINUS_ZERO.0]});
                 self.emit(amd! {xorpd xmm(0), xmm(1)});
             }
-            _ => {                
+            _ => {
                 self.emit(amd! {mov rax, qword ptr [rbx+8*p.0]});
                 self.emit(amd! {call rax});
             }
@@ -58,8 +58,8 @@ impl AmdCompiler {
     }
 
     // xmm(2) == true ? xmm(0) : xmm(1)
-    fn ifelse(&mut self) {        
-        self.emit(amd! {movapd xmm(3), xmm(2)});        
+    fn ifelse(&mut self) {
+        self.emit(amd! {movapd xmm(3), xmm(2)});
         self.emit(amd! {andpd xmm(0), xmm(2)});
         self.emit(amd! {andnpd xmm(3), xmm(1)});
         self.emit(amd! {orpd xmm(0), xmm(3)});
@@ -68,7 +68,7 @@ impl AmdCompiler {
     fn load(&mut self, x: u8, r: Word, rename: bool) -> u8 {
         if let Some(s) = self.allocs.get(&r) {
             let s = *s;
-            
+
             if s < 4 {
                 if rename {
                     return s + 4;
@@ -78,35 +78,35 @@ impl AmdCompiler {
                 }
             }
         }
-    
+
         if r == Frame::ZERO {
             self.emit(amd! {xorpd xmm(x), xmm(x)});
         } else if r.is_temp() {
-            let k = self.stack.pop(&r); 
-            self.emit(amd! {movsd xmm(x), qword ptr [rsp+8*k]});            
+            let k = self.stack.pop(&r);
+            self.emit(amd! {movsd xmm(x), qword ptr [rsp+8*k]});
         } else {
             self.emit(amd! {movsd xmm(x), qword ptr [rbp+8*r.0]});
         };
-        
+
         x
     }
 
     fn save(&mut self, x: u8, r: Word) {
         if let Some(s) = self.allocs.get(&r) {
             let s = *s;
-            
+
             if s < 4 {
                 self.emit(amd! {movapd xmm(s+4), xmm(x)});
                 return;
             }
         }
-    
+
         if r.is_temp() {
             let k = self.stack.push(&r);
             self.emit(amd! {movsd qword ptr [rsp+8*k], xmm(x)});
         } else {
             self.emit(amd! {movsd qword ptr [rbp+8*r.0], xmm(x)});
-        }        
+        }
     }
 
     fn prologue(&mut self, n: usize) {
@@ -123,11 +123,11 @@ impl AmdCompiler {
         self.emit(amd! {pop rbp});
         self.emit(amd! {ret});
     }
-    
+
     fn codegen(&mut self, prog: &Program, saveable: &HashSet<Word>) {
         let mut r = Frame::ZERO;
-    
-        for c in prog.code.iter() {        
+
+        for c in prog.code.iter() {
             match c {
                 Instruction::Unary { p, x, dst, op } => {
                     if r != *x {
@@ -144,7 +144,7 @@ impl AmdCompiler {
                         (x, y)
                     };
 
-                    let ry = if *y == r {                        
+                    let ry = if *y == r {
                         self.emit(amd! {movapd xmm(1), xmm(0)});
                         1
                     } else {
@@ -192,14 +192,14 @@ impl AmdCompiler {
 }
 
 impl Compiler<MachineCode> for AmdCompiler {
-    fn compile(&mut self, prog: &Program) -> MachineCode {                
+    fn compile(&mut self, prog: &Program) -> MachineCode {
         let analyzer = Analyzer::new(prog);
         let saveable = analyzer.find_saveable();
-        
+
         self.allocs = analyzer.alloc_regs();
-        
-        self.codegen(prog, &saveable);             
-        self.machine_code.clear();        
+
+        self.codegen(prog, &saveable);
+        self.machine_code.clear();
         let n = 8 * self.stack.capacity();
         self.prologue(n);
         self.codegen(prog, &saveable);
@@ -213,6 +213,3 @@ impl Compiler<MachineCode> for AmdCompiler {
         )
     }
 }
-
-
-

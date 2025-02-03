@@ -73,7 +73,7 @@ impl Frame {
             Word(idx, k + 1) // because temps can share the same memory, version
                              // is increased to differentiate different temps
         } else {
-            let idx = self.stack.len();            
+            let idx = self.stack.len();
             self.stack.push(WordType::Temp);
             Word(idx, 1)
         }
@@ -112,7 +112,9 @@ impl Frame {
     }
 
     pub fn is_diff(&self, r: &Word) -> bool {
-        if r.is_temp() { return false; }
+        if r.is_temp() {
+            return false;
+        }
         if let WordType::Diff(_) = self.words[r.0] {
             true
         } else {
@@ -132,7 +134,9 @@ impl Frame {
     }
 
     pub fn is_obs(&self, r: &Word) -> bool {
-        if r.is_temp() { return false; }
+        if r.is_temp() {
+            return false;
+        }
         if let WordType::Obs(_) = self.words[r.0] {
             true
         } else {
@@ -195,7 +199,7 @@ impl Frame {
             .map(|x| x.value().unwrap_or(0.0))
             .collect::<Vec<f64>>()
     }
-    
+
     pub fn stack_size(&self) -> usize {
         self.stack.len()
     }

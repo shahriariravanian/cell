@@ -63,17 +63,18 @@ macro_rules! modrm_mem {
         let dst = $dst;
         let base = $base;
         let offset = $offset;
-        
-        let mut v = if offset < 128 { 
+
+        let mut v = if offset < 128 {
             vec![0x40 + (dst << 3) + base]
-        } else { 
-            vec![0x80 + (dst << 3) + base] 
+        } else {
+            vec![0x80 + (dst << 3) + base]
         };
-        
-        if base == 4 {  // rsp
-            v.push(0x24);   // SIB byte
-        }        
-        
+
+        if base == 4 {
+            // rsp
+            v.push(0x24); // SIB byte
+        }
+
         if offset < 128 {
             v.push(offset as u8)
         } else {
@@ -82,7 +83,7 @@ macro_rules! modrm_mem {
             v.push((offset >> 16) as u8);
             v.push((offset >> 24) as u8);
         };
-        
+
         v
     }};
 }
@@ -303,6 +304,12 @@ fn test_amd() {
     assert_eq!(vec![0x66, 0x48, 0x0f, 0x6e, 0xe9], amd! {movq xmm(5),rcx});
     assert_eq!(vec![0x5d], amd! {pop rbp});
     assert_eq!(vec![0xc3], amd! {ret});
-    assert_eq!(vec![0x48, 0x81, 0xc4, 0x34, 0x12, 0x00, 0x00], amd! {add rsp,0x1234});
-    assert_eq!(vec![0x48, 0x81, 0xec, 0x21, 0x43, 0x00, 0x00], amd! {sub rsp,0x4321});
+    assert_eq!(
+        vec![0x48, 0x81, 0xc4, 0x34, 0x12, 0x00, 0x00],
+        amd! {add rsp,0x1234}
+    );
+    assert_eq!(
+        vec![0x48, 0x81, 0xec, 0x21, 0x43, 0x00, 0x00],
+        amd! {sub rsp,0x4321}
+    );
 }
