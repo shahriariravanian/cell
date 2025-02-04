@@ -113,7 +113,7 @@ impl ArmCompiler {
     }
     
     fn fuse_load(&mut self, r0: Word, x: u8, r: Word, rename: bool) -> u8 {
-        if x == r0 {
+        if r == r0 {
             0
         } else {
             self.load(x, r, rename)

@@ -4,8 +4,8 @@ using Sundials
 
 include("compiler.jl")
 
-# ml = CellModel("../models/ohara_rudy_cipa_v1_2017.cellml.xml")
-ml = CellModel("../models/tentusscher_noble_noble_panfilov_2004_a.cellml.xml")
+ml = CellModel("../models/ohara_rudy_cipa_v1_2017.cellml.xml")
+# ml = CellModel("../models/tentusscher_noble_noble_panfilov_2004_a.cellml.xml")
 p = get_p(ml)
 u0 = get_u0(ml)
 
@@ -20,7 +20,7 @@ n = length(S)
 println("LLVM")
 b_llvm = @benchmark trial(prob) setup=(prob=ODEProblem(ml.sys, S[rand(1:n)], (0, 5000.0), p))
 
-println("naive native")
+println("native")
 b_native = @benchmark trial(prob) setup=(prob=ODEProblem(compile(ml.sys, "native"), S[rand(1:n)], (0, 5000.0), p))
 
 println("wasm")
