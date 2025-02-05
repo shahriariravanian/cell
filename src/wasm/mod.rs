@@ -7,15 +7,8 @@ use crate::model::Program;
 use crate::register::Word;
 use crate::utils::*;
 
-#[derive(Debug, Copy, Clone)]
-enum ArgType {
-    F64,
-    I32,
-}
-
-#[derive(Debug)]
 enum OpType {
-    Nop(ArgType), // not implemented yet!
+    Nop, // not implemented yet!
     Unary(&'static str),
     Binary(&'static str),
     Ternary(&'static str),

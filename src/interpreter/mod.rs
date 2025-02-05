@@ -38,7 +38,7 @@ impl Compiler<ByteCode> for Interpreter {
         let mut code: Vec<Fast> = Vec::new();
         let mut mem = prog.frame.mem();
         let m = mem.len();
-        let mut h = |x: &Word|->u32 { (if x.is_temp() { m + x.0 } else { x.0 }) as u32 };
+        let h = |x: &Word|->u32 { (if x.is_temp() { m + x.0 } else { x.0 }) as u32 };
 
         for c in prog.code.iter() {
             match c {
@@ -69,7 +69,7 @@ impl Compiler<ByteCode> for Interpreter {
             }
         }
         
-        for i in 0..prog.frame.stack_size() {
+        for _ in 0..prog.frame.stack_size() {
             mem.push(0.0);
         }
 

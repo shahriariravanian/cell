@@ -76,47 +76,6 @@ impl Analyzer {
         saveable
     }
 
-    /*
-        A bufferable register is a saveable register that its lifetime
-        does not cross an external call boundary, which can invalidate
-        the buffer
-    */
-    pub fn find_bufferable(&self) -> HashSet<Word> {
-        let caller = [
-            "rem", "power", "sin", "cos", "tan", "csc", "sec", "cot", "arcsin", "arccos", "arctan",
-            "exp", "ln", "log", "root",
-        ];
-
-        let mut candidates: Vec<Word> = Vec::new();
-        let mut bufferable: HashSet<Word> = HashSet::new();
-
-        for l in self.events.iter() {
-            match l {
-                Event::Producer(p) => {
-                    candidates.push(*p);
-                }
-                Event::Consumer(c) => {
-                    let r = candidates.pop();
-
-                    if candidates.contains(c) {
-                        bufferable.insert(*c);
-                    };
-
-                    if r.is_some() {
-                        candidates.push(r.unwrap());
-                    };
-                }
-                Event::Caller(op) => {
-                    if caller.contains(&op.as_str()) {
-                        candidates.clear();
-                    }
-                }
-            }
-        }
-
-        bufferable
-    }
-
     pub fn alloc_regs(&self) -> HashMap<Word, u8> {
         let caller = [
             "rem", "power", "sin", "cos", "tan", "csc", "sec", "cot", "arcsin", "arccos", "arctan",
@@ -161,36 +120,6 @@ impl Analyzer {
 }
 
 /*********************************************/
-
-#[derive(Debug)]
-pub struct Renamer {
-    mapping: Vec<u8>,
-}
-
-impl Renamer {
-    pub fn new(n: u8) -> Renamer {
-        let mapping: Vec<u8> = (0..n).collect();
-        Renamer { mapping }
-    }
-
-    pub fn reset(&mut self) {
-        for i in 0..self.mapping.len() {
-            self.mapping[i] = i as u8;
-        }
-    }
-
-    pub fn get(&self, i: u8) -> u8 {
-        self.mapping[i as usize]
-    }
-
-    pub fn swap(&mut self, i: u8, j: u8) {
-        let i = i as usize;
-        let j = j as usize;
-        let t = self.mapping[i];
-        self.mapping[i] = self.mapping[j];
-        //self.mapping[j] = t;
-    }
-}
 
 #[derive(Debug)]
 pub struct Stack {

@@ -3,7 +3,6 @@ use std::io::{BufWriter, Write};
 
 use crate::code::*;
 use crate::model::Program;
-use crate::register::Word;
 use crate::utils::*;
 
 //mod func;
