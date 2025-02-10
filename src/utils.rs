@@ -8,6 +8,7 @@ use crate::model::Program;
 
 pub trait Callable {
     fn call(&mut self, du: &mut [f64], u: &[f64], p: &[f64], t: f64);
+    fn call_py(&mut self, du: &mut [f64], u: &[f64], t: f64);
 }
 
 /********************************************/

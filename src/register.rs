@@ -159,6 +159,13 @@ impl Frame {
             .filter(|x| matches!(x, WordType::State(_, _)))
             .count()
     }
+    
+    pub fn count_diffs(&self) -> usize {
+        self.words
+            .iter()
+            .filter(|x| matches!(x, WordType::Diff(_)))
+            .count()
+    }
 
     pub fn count_params(&self) -> usize {
         self.words
@@ -174,13 +181,6 @@ impl Frame {
             .count()
     }
 
-    pub fn count_temp(&self) -> usize {
-        self.words
-            .iter()
-            .filter(|x| matches!(x, WordType::Temp))
-            .count()
-    }
-
     pub fn first_state(&self) -> Option<usize> {
         self.words
             .iter()
@@ -191,6 +191,18 @@ impl Frame {
         self.words
             .iter()
             .position(|x| matches!(x, WordType::Param(_, _)))
+    }
+    
+    pub fn first_obs(&self) -> Option<usize> {
+        self.words
+            .iter()
+            .position(|x| matches!(x, WordType::Obs(_)))
+    }
+
+    pub fn first_diff(&self) -> Option<usize> {
+        self.words
+            .iter()
+            .position(|x| matches!(x, WordType::Diff(_)))
     }
 
     pub fn mem(&self) -> Vec<f64> {

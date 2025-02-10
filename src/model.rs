@@ -20,19 +20,50 @@ pub struct Program {
 impl Program {
     pub fn new(ml: &CellModel) -> Program {
         let mut frame = Frame::new();
-
+        
+        /* 
+            this section lays the memory format
+            the order of different sections is important!            
+            
+            the layout is:
+            
+            +------------------------+
+            | predefined constants   |
+            +------------------------+
+            | independent variable   |
+            +------------------------+
+            | state variables        |
+            +------------------------+
+            | parameters             |
+            +------------------------+
+            | observables (output)   |
+            +------------------------+
+            | differentials (output) |
+            +------------------------+
+            | constants and temps    |
+            +------------------------+
+        */
+        
         frame.alloc(WordType::Var(ml.iv.name.clone()));
 
         for v in &ml.states {
             frame.alloc(WordType::State(v.name.clone(), v.val));
         }
-
-        for v in &ml.states {
-            frame.alloc(WordType::Diff(v.name.clone()));
-        }
-
+        
         for v in &ml.params {
             frame.alloc(WordType::Param(v.name.clone(), v.val));
+        }
+        
+        for eq in &ml.obs {
+            if let Some(name) = eq.lhs.var() {                
+                frame.alloc(WordType::Obs(name));
+            } else {
+                panic!("lhs var not found");
+            }
+        }
+        
+        for v in &ml.states {
+            frame.alloc(WordType::Diff(v.name.clone()));
         }
 
         let mut prog = Program {
@@ -330,7 +361,7 @@ impl Lower for Equation {
         let dst = if let Some(var) = self.lhs.diff_var() {
             prog.reg_diff(&var)
         } else if let Some(var) = self.lhs.var() {
-            prog.alloc_obs(&var)
+            prog.reg(&var)
         } else {
             panic!("undefined diff variable");
         };

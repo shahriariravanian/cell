@@ -16,6 +16,7 @@ mod amd;
 mod arm;
 mod interpreter;
 mod rusty;
+#[cfg(feature = "wasm")]
 mod wasm;
 
 use model::{CellModel, Program};
@@ -57,7 +58,9 @@ fn main() {
         "arm" => CompilerType::Arm,
         "amd" => CompilerType::Amd,
         "native" => CompilerType::Native,
+        #[cfg(feature = "wasm")]
         "wasm" => CompilerType::Wasm,
+        #[cfg(feature = "rusty")]
         "rusty" => CompilerType::Rusty,
         _ => {
             println!("compiler type should be one of bytecode, amd, arm, native, wasm, or. rusty");

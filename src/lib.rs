@@ -6,13 +6,14 @@ mod machine;
 mod model;
 mod register;
 mod runnable;
-mod solvers;
 mod utils;
 
 mod amd;
 mod arm;
 mod interpreter;
+#[cfg(feature = "rusty")]
 mod rusty;
+#[cfg(feature = "wasm")]
 mod wasm;
 
 use model::{CellModel, Program};
@@ -76,8 +77,13 @@ pub extern "C" fn compile(p: *const c_char, ty: *const c_char) -> *const Compile
 
     res.func = match ty {
         "bytecode" => Some(Runnable::new(prog, CompilerType::ByteCode)),
+        "arm" => Some(Runnable::new(prog, CompilerType::Arm)),
+        "amd" => Some(Runnable::new(prog, CompilerType::Amd)),
         "native" => Some(Runnable::new(prog, CompilerType::Native)),
+        #[cfg(feature = "wasm")]
         "wasm" => Some(Runnable::new(prog, CompilerType::Wasm)),
+        #[cfg(feature = "rusty")]
+        "rusty" => Some(Runnable::new(prog, CompilerType::Rusty)),
         _ => None,
     };
 
@@ -182,8 +188,51 @@ pub extern "C" fn run(
 }
 
 #[no_mangle]
+pub extern "C" fn run_py(
+    q: *mut CompilerResult,
+    du: *mut f64,
+    nd: usize,
+    u: *const f64,
+    ns: usize,
+    t: f64,
+) -> bool {
+    let q: &mut CompilerResult = unsafe { &mut *q };
+
+    if let Some(func) = &mut q.func {
+        if func.count_states + func.count_params != ns || func.count_obs != nd {
+            return false;
+        }
+
+        let du: &mut [f64] = unsafe { std::slice::from_raw_parts_mut(du, nd) };
+        let u: &[f64] = unsafe { std::slice::from_raw_parts(u, ns) };
+        func.call_py(du, u, t);
+        true
+    } else {
+        false
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn finalize(p: *mut CompilerResult) {
     if !p.is_null() {
         let _ = unsafe { Box::from_raw(p) };
     }
 }
+
+#[no_mangle]
+pub extern "C" fn info() -> *const c_char {
+    let msg = c"lib 0.1";
+    msg.as_ptr() as *const _
+}
+
+#[no_mangle]
+pub extern "C" fn elem_at(
+    v: *const f64,
+    nv: usize,
+    index: usize,
+) -> f64 {
+    let v: &[f64] = unsafe { std::slice::from_raw_parts(v, nv) };
+    v[index]     
+}
+
+
